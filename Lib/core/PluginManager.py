@@ -54,6 +54,19 @@ def load_plugin(plugin):
     except AttributeError:
         logger.warning(f"插件 {name} 未定义 plugin_info 属性，无法获取插件信息")
 
+    # 获取相对路径
+    relative_path = os.path.relpath(plugin["path"], start=WORK_PATH)
+
+    # 替换文件分隔符为点
+    relative_path = relative_path.replace(os.sep, '.')
+
+    # 去除最后的 .py 后缀
+    if relative_path.endswith('.py'):
+        relative_path = relative_path[:-3]  # 去掉 .py
+
+    # 将模块添加到sys.modules内
+    sys.modules[relative_path] = module
+
     return module, plugin_info
 
 
