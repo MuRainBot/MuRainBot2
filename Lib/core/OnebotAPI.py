@@ -10,13 +10,12 @@ OnebotAPI
 """
 
 import json
-import threading
+import traceback
+import urllib.parse
+import requests
 
 from . import EventManager, ConfigManager
 from ..utils import Logger
-import requests
-import traceback
-import urllib.parse
 
 logger = Logger.get_logger()
 config = ConfigManager.GlobalConfig()
@@ -109,7 +108,7 @@ class OnebotAPI:
                 data=json.dumps(data if data is not None else {})
             )
             if response.status_code != 200 or (response.json()['status'] != 'ok' or response.json()['retcode'] != 0):
-                raise Exception(response.text)
+                raise Exception(f"返回异常, 状态码: {response.status_code}, 返回内容: {response.text}")
 
             # 如果original为真，则返回原值和response
             if original:
@@ -117,7 +116,8 @@ class OnebotAPI:
             else:
                 return response.json()['data']
         except Exception as e:
-            logger.error(f"调用 API: {node} data: {data} 异常: {repr(e)}")
+            logger.error(f"调用 API: {node} data: {data} 异常: {repr(e)}\n"
+                         f"{traceback.format_exc()}")
             raise e
 
     def send_private_msg(self, user_id: int, message: str | list[dict]):
