@@ -54,6 +54,19 @@ def load_plugin(plugin):
     except AttributeError:
         logger.warning(f"插件 {name} 未定义 plugin_info 属性，无法获取插件信息")
 
+    # 获取相对路径
+    relative_path = os.path.relpath(plugin["path"], start=WORK_PATH)
+
+    # 替换文件分隔符为点
+    relative_path = relative_path.replace(os.sep, '.')
+
+    # 去除最后的 .py 后缀
+    if relative_path.endswith('.py'):
+        relative_path = relative_path[:-3]  # 去掉 .py
+
+    # 将模块添加到sys.modules内
+    sys.modules[relative_path] = module
+
     return module, plugin_info
 
 
@@ -81,7 +94,7 @@ def load_plugins():
         else:
             logger.warning(f"{full_path} 不是一个有效的插件")
             continue
-        logger.debug(f"正在加载插件 {file_path}")
+        logger.debug(f"找到插件 {file_path} 待加载")
         plugin = {"name": name, "plugin": None, "info": None, "file_path": file_path, "path": full_path}
         plugins.append(plugin)
 
@@ -89,6 +102,8 @@ def load_plugins():
         name = plugin["name"]
         file_path = plugin["file_path"]
         full_path = plugin["path"]
+
+        logger.debug(f"开始加载插件 {file_path}")
 
         if plugin["plugin"] is not None:
             # 由于其他原因已被加载（例如插件依赖）

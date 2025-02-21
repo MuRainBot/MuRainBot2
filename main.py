@@ -114,10 +114,13 @@ if __name__ == '__main__':
         logger.info("正在尝试获取用户信息...")
         try:
             account = OnebotAPI.api.get_login_info()
-            ConfigManager.GlobalConfig().set("account", {
-                "user_id": account["user_id"],
-                "nick_name": account["nickname"]
+            new_account = ConfigManager.GlobalConfig().config.get("account")
+            new_account.update({
+                "user_id": account['user_id'],
+                "nick_name": account['nickname']
             })
+
+            ConfigManager.GlobalConfig().set("account", new_account)
         except Exception as e:
             logger.warning(f"获取用户信息失败: {repr(e)}, 可能会导致严重的问题！")
 

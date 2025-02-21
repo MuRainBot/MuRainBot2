@@ -2,6 +2,7 @@
 事件处理器
 """
 import copy
+import traceback
 
 from Lib.core import EventManager, ConfigManager
 from Lib.utils import EventClassifier, Logger, QQRichText
@@ -33,6 +34,7 @@ class KeyValueRule(Rule):
     键值规则
     检测event data中的某个键的值是否满足要求
     """
+
     def __init__(self, key, value, model: Literal["eq", "ne", "in", "not in", "func"],
                  func: Callable[[Any, Any], bool] = None):
         """
@@ -63,7 +65,8 @@ class KeyValueRule(Rule):
                 case "func":
                     return self.func(event_data.get(self.key), self.value)
         except Exception as e:
-            logger.error(f"Error occurred while matching event {event_data}: {repr(e)}")
+            logger.error(f"Error occurred while matching event {event_data}: {repr(e)}\n"
+                         f"{traceback.format_exc()}")
             return False
 
 
@@ -72,6 +75,7 @@ class FuncRule(Rule):
     函数规则
     检测event data是否满足函数
     """
+
     def __init__(self, func: Callable[[Any], bool]):
         """
         Args:
@@ -83,7 +87,8 @@ class FuncRule(Rule):
         try:
             return self.func(event_data)
         except Exception as e:
-            logger.error(f"Error occurred while matching event {event_data}: {repr(e)}")
+            logger.error(f"Error occurred while matching event {event_data}: {repr(e)}\n"
+                         f"{traceback.format_exc()}")
             return False
 
 
@@ -97,6 +102,7 @@ class CommandRule(Rule):
 
     会自动移除消息中的 @bot 和命令起始符，同时会自动将 别名 替换为 命令本身，以简化插件处理逻辑。
     """
+
     def __init__(self, command: str, aliases: set[str] = None, command_start: list[str] = None):
         """
         Args:
@@ -187,6 +193,7 @@ class Matcher:
     """
     事件处理器
     """
+
     def __init__(self):
         self.handlers = []
 
@@ -222,7 +229,8 @@ class Matcher:
                         logger.debug(f"处理器 {handler.__name__} 阻断了事件 {event_data} 的传播")
                         return
             except Exception as e:
-                logger.error(f"Error occurred while matching event {event_data}: {repr(e)}")
+                logger.error(f"Error occurred while matching event {event_data}: {repr(e)}\n"
+                             f"{traceback.format_exc()}")
 
 
 events_matchers: dict[str, dict[Type[EventClassifier.Event], list[tuple[int, list[Rule], Matcher]]]] = {}

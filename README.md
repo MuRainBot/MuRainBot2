@@ -22,7 +22,7 @@
     </a>
     <br>
     <a href="https://github.com/MuRainBot/MuRainBot2">
-        <img src="https://counter.seku.su/cmoe?name=murainbot2&theme=rule34" alt=""/>
+        <img src="https://counter.seku.su/cmoe?name=murainbot2&theme=moebooru" alt=""/>
     </a>
 </p>
 
