@@ -920,7 +920,7 @@ def on_escalation(event_data):
     """
     event_data = event_data.event_data
     event = Event(event_data)
-    event.call()
+    event_call_list = [event]
     matched_event = False
     for event_cls_data in events:
         if (
@@ -931,7 +931,11 @@ def on_escalation(event_data):
             if not matched_event:
                 if event.logger() is not False:
                     matched_event = True
-            event.call()
+            event_call_list.append(event)
 
     if not matched_event:
         logger.warning(f"未知的上报事件: {event_data}")
+
+    # 广播事件
+    for event in event_call_list:
+        event.call()
