@@ -5,13 +5,14 @@
 import traceback
 
 from Lib.core import OnebotAPI, ThreadPool
-from Lib.utils import QQRichText, Logger
+from Lib.utils import QQRichText, Logger, QQDataCacher
 
 logger = Logger.get_logger()
 
 from typing import Generic, TypeVar, Union, Callable
 
 api = OnebotAPI.OnebotAPI()
+cacher = QQDataCacher.qq_data_cache
 
 T = TypeVar("T")  # 成功类型
 E = TypeVar("E")  # 错误类型
@@ -21,6 +22,7 @@ class Result(Generic[T, E]):
     """
     结果类
     """
+
     def __init__(self, value: Union[T, E], is_ok: bool):
         self._value = value
         self._is_ok = is_ok
@@ -118,6 +120,12 @@ class Action:
         except Exception as e:
             result = Result(e, False)
         self._result = result
+        try:
+            if self._result.is_ok:
+                self.logger(result.unwrap(), *self.args, **self.kwargs)
+        except Exception as e:
+            logger.warning(f"记录log异常: {repr(e)}\n"
+                           f"{traceback.format_exc()}")
         if self.callback is not None:
             try:
                 self.callback(self._result)
@@ -125,6 +133,16 @@ class Action:
                 logger.warning(f"回调函数异常: {repr(e)}\n"
                                f"{traceback.format_exc()}")
         return self
+
+    def logger(self, *args, **kwargs):
+        """
+        当Action调用成功时调用此方法记录log
+        Args:
+            result: self.call_func返回的结果
+            *args: 传给self.call_func的参数
+            **kwargs: 传给self.call_func的参数
+        """
+        pass
 
     def get_result(self) -> Result:
         """
@@ -154,6 +172,7 @@ class Action:
         Returns:
             Action
         """
+
         @ThreadPool.async_task
         def _call_async():
             return self.call()
@@ -192,6 +211,10 @@ class SendPrivateMsg(Action):
             message = message.get_array()
         super().__init__(user_id=user_id, message=message, callback=callback)
 
+    def logger(self, result, user_id: int, message: str | list[dict] | QQRichText.QQRichText):
+        logger.info(f"向 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+                    f"发送消息 {message}({result['message_id']})")
+
 
 class SendGroupMsg(Action):
     """
@@ -211,6 +234,10 @@ class SendGroupMsg(Action):
         if isinstance(message, QQRichText.QQRichText):
             message = message.get_array()
         super().__init__(group_id=group_id, message=message, callback=callback)
+
+    def logger(self, result, group_id: int, message: str | list[dict] | QQRichText.QQRichText):
+        logger.info(f"向群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"发送消息 {QQRichText.QQRichText(message)}({result['message_id']})")
 
 
 class SendMsg(Action):
@@ -239,6 +266,14 @@ class SendMsg(Action):
 
         super().__init__(user_id=user_id, group_id=group_id, message=message, callback=callback)
 
+    def logger(self, result, user_id: int, group_id: int, message: str | list[dict] | QQRichText.QQRichText):
+        if user_id != -1:
+            logger.info(f"向 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+                        f"发送消息 {QQRichText.QQRichText(message)}({result['message_id']})")
+        else:
+            logger.info(f"向群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                        f"发送消息 {QQRichText.QQRichText(message)}({result['message_id']})")
+
 
 class DeleteMsg(Action):
     """
@@ -254,6 +289,9 @@ class DeleteMsg(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(message_id=message_id, callback=callback)
+
+    def logger(self, result, message_id: int):
+        logger.info(f"撤回消息 {message_id}")
 
 
 class GetMsg(Action):
@@ -271,6 +309,9 @@ class GetMsg(Action):
         """
         super().__init__(message_id=message_id, callback=callback)
 
+    def logger(self, result, message_id: int):
+        logger.debug(f"获取消息 {message_id}")
+
 
 class GetForwardMsg(Action):
     """
@@ -286,6 +327,9 @@ class GetForwardMsg(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(message_id=message_id, callback=callback)
+
+    def logger(self, result, message_id: int):
+        logger.debug(f"获取合并转发消息 {message_id}")
 
 
 class SendLike(Action):
@@ -303,6 +347,9 @@ class SendLike(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(user_id=user_id, times=times, callback=callback)
+
+    def logger(self, result, user_id: int, times: int):
+        logger.info(f"发送好友赞 {user_id} {times} 次")
 
 
 class SetGroupKick(Action):
@@ -323,6 +370,11 @@ class SetGroupKick(Action):
         """
         super().__init__(group_id=group_id, user_id=user_id, reject_add_request=reject_add_request, callback=callback)
 
+    def logger(self, result, group_id: int, user_id: int, reject_add_request: bool):
+        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) 踢出群聊"
+                    f"{'并拒绝此人加群请求' if reject_add_request else ''}")
+
 
 class SetGroupBan(Action):
     """
@@ -340,6 +392,10 @@ class SetGroupBan(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(group_id=group_id, user_id=user_id, duration=duration, callback=callback)
+
+    def logger(self, result, group_id: int, user_id: int, duration: int):
+        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) 禁言 {duration} 秒")
 
 
 class SetGroupAnonymousBan(Action):
@@ -362,6 +418,12 @@ class SetGroupAnonymousBan(Action):
         super().__init__(group_id=group_id, anonymous=anonymous, anonymous_flag=anonymous_flag, duration=duration,
                          callback=callback, **{'flag': anonymous_flag} if anonymous_flag else {})
 
+    def logger(self, result, group_id: int, anonymous: dict, anonymous_flag: str, duration: int):
+        anonymous_str = f"{cacher.get_user_info(anonymous).get('name')}" if anonymous else "匿名用户"
+        anonymous_detail = f"({anonymous['id']}; flag: {anonymous_flag})" if anonymous else ""
+        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {anonymous_str} {anonymous_detail} 禁言 {duration} 秒")
+
 
 class SetGroupWholeBan(Action):
     """
@@ -378,6 +440,10 @@ class SetGroupWholeBan(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(group_id=group_id, enable=enable, callback=callback)
+
+    def logger(self, result, group_id: int, enable: bool):
+        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"{'开启' if enable else '关闭'}全员禁言")
 
 
 class SetGroupAdmin(Action):
@@ -397,6 +463,11 @@ class SetGroupAdmin(Action):
         """
         super().__init__(group_id=group_id, user_id=user_id, enable=enable, callback=callback)
 
+    def logger(self, result, group_id: int, user_id: int, enable: bool):
+        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+                    f"{'设为' if enable else '取消设为'}管理员")
+
 
 class SetGroupCard(Action):
     """
@@ -415,6 +486,11 @@ class SetGroupCard(Action):
         """
         super().__init__(group_id=group_id, user_id=user_id, card=card, callback=callback)
 
+    def logger(self, result, group_id: int, user_id: int, card: str):
+        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+                    f"{'设置群名片为' if card else '删除群名片'} {card}")
+
 
 class SetGroupLeave(Action):
     """
@@ -431,6 +507,10 @@ class SetGroupLeave(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(group_id=group_id, is_dismiss=is_dismiss, callback=callback)
+
+    def logger(self, result, group_id: int, is_dismiss: bool):
+        logger.info(f"退出群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"{'并解散' if is_dismiss else ''}")
 
 
 class SetGroupSpecialTitle(Action):
@@ -453,6 +533,12 @@ class SetGroupSpecialTitle(Action):
         super().__init__(group_id=group_id, user_id=user_id, special_title=special_title, duration=duration,
                          callback=callback)
 
+    def logger(self, result, group_id: int, user_id: int, special_title: str, duration: int):
+        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+                    f"{'设置专属头衔为' if special_title else '删除专属头衔'} {special_title} "
+                    )
+
 
 class SetFriendAddRequest(Action):
     """
@@ -470,6 +556,10 @@ class SetFriendAddRequest(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(flag=flag, approve=approve, remark=remark, callback=callback)
+
+    def logger(self, result, flag: str, approve: bool, remark: str):
+        logger.info(f"处理加好友请求 {'同意' if approve else '拒绝'} "
+                    f"{'并设置备注为' if remark else ''} {remark}")
 
 
 class SetGroupAddRequest(Action):
@@ -491,6 +581,10 @@ class SetGroupAddRequest(Action):
         """
         super().__init__(flag=flag, sub_type=sub_type, approve=approve, reason=reason, callback=callback)
 
+    def logger(self, result, flag: str, sub_type: str, approve: bool, reason: str):
+        logger.info(f"处理加群请求/邀请 {'同意' if approve else '拒绝'} "
+                    f"{'并设置理由为' if reason else ''} {reason}")
+
 
 class GetLoginInfo(Action):
     """
@@ -505,6 +599,9 @@ class GetLoginInfo(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(callback=callback)
+
+    def logger(self, result):
+        logger.debug(f"获取登录号信息")
 
 
 class GetStrangerInfo(Action):
@@ -523,6 +620,9 @@ class GetStrangerInfo(Action):
         """
         super().__init__(user_id=user_id, no_cache=no_cache, callback=callback)
 
+    def logger(self, result, user_id: int, no_cache: bool):
+        logger.debug(f"获取陌生人 {user_id} 信息")
+
 
 class GetFriendList(Action):
     """
@@ -537,6 +637,9 @@ class GetFriendList(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(callback=callback)
+
+    def logger(self, result):
+        logger.debug(f"获取好友列表")
 
 
 class GetGroupInfo(Action):
@@ -555,6 +658,9 @@ class GetGroupInfo(Action):
         """
         super().__init__(group_id=group_id, no_cache=no_cache, callback=callback)
 
+    def logger(self, result, group_id: int, no_cache: bool):
+        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 信息")
+
 
 class GetGroupList(Action):
     """
@@ -569,6 +675,9 @@ class GetGroupList(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(callback=callback)
+
+    def logger(self, result):
+        logger.debug(f"获取群列表")
 
 
 class GetGroupMemberInfo(Action):
@@ -588,6 +697,10 @@ class GetGroupMemberInfo(Action):
         """
         super().__init__(group_id=group_id, user_id=user_id, no_cache=no_cache, callback=callback)
 
+    def logger(self, result, group_id: int, user_id: int, no_cache: bool):
+        logger.debug(
+            f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) 信息")
+
 
 class GetGroupMemberList(Action):
     """
@@ -603,6 +716,9 @@ class GetGroupMemberList(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(group_id=group_id, callback=callback)
+
+    def logger(self, result, group_id: int):
+        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 成员列表")
 
 
 class GetGroupHonorInfo(Action):
@@ -622,6 +738,9 @@ class GetGroupHonorInfo(Action):
         """
         super().__init__(group_id=group_id, type_=type_, callback=callback)
 
+    def logger(self, result, group_id: int, type_: str):
+        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 荣誉信息, 类型: {type_}")
+
 
 class GetCookies(Action):
     """
@@ -638,6 +757,9 @@ class GetCookies(Action):
         """
         super().__init__(domain=domain, callback=callback)
 
+    def logger(self, result, domain: str):
+        logger.debug(f"获取 Cookies, domain: {domain}")
+
 
 class GetCsrfToken(Action):
     """
@@ -652,6 +774,9 @@ class GetCsrfToken(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(callback=callback)
+
+    def logger(self, result):
+        logger.debug(f"获取 CSRF Token")
 
 
 class GetCredentials(Action):
@@ -668,6 +793,9 @@ class GetCredentials(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(domain=domain, callback=callback)
+
+    def logger(self, result, domain: str):
+        logger.debug(f"获取 QQ 相关接口凭证, domain: {domain}")
 
 
 class GetRecord(Action):
@@ -689,6 +817,9 @@ class GetRecord(Action):
         """
         super().__init__(file=file, out_format=out_format, out_file=out_file, callback=callback)
 
+    def logger(self, result, file: str, out_format: str, out_file: str):
+        logger.debug(f"获取语音文件: {file}, 转换格式: {out_format}")
+
 
 class GetImage(Action):
     """
@@ -705,6 +836,9 @@ class GetImage(Action):
         """
         super().__init__(file=file, callback=callback)
 
+    def logger(self, result, file: str):
+        logger.debug(f"获取图片文件: {file}")
+
 
 class CanSendImage(Action):
     """
@@ -719,6 +853,9 @@ class CanSendImage(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(callback=callback)
+
+    def logger(self, result):
+        logger.debug(f"检查是否可以发送图片")
 
 
 class CanSendRecord(Action):
@@ -735,6 +872,9 @@ class CanSendRecord(Action):
         """
         super().__init__(callback=callback)
 
+    def logger(self, result):
+        logger.debug(f"检查是否可以发送语音")
+
 
 class GetStatus(Action):
     """
@@ -750,6 +890,9 @@ class GetStatus(Action):
         """
         super().__init__(callback=callback)
 
+    def logger(self, result):
+        logger.debug(f"获取Onebot运行状态")
+
 
 class GetVersionInfo(Action):
     """
@@ -764,6 +907,9 @@ class GetVersionInfo(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(callback=callback)
+
+    def logger(self, result):
+        logger.debug(f"获取Onebot版本信息")
 
 
 class SetRestart(Action):
@@ -781,6 +927,9 @@ class SetRestart(Action):
         """
         super().__init__(delay=delay, callback=callback)
 
+    def logger(self, result, delay: int):
+        logger.info(f"重启Onebot实现端, 延迟: {delay}ms")
+
 
 class CleanCache(Action):
     """
@@ -795,6 +944,9 @@ class CleanCache(Action):
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
         super().__init__(callback=callback)
+
+    def logger(self, result):
+        logger.debug(f"清理Onebot实现端缓存")
 
 
 """
