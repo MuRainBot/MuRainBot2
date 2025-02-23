@@ -10,8 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 from wsgiref.simple_server import WSGIServer
 
 from flask import Flask, request
-from werkzeug.serving import WSGIRequestHandler
-
 
 logger = Logger.get_logger()
 app = Flask(__name__)
@@ -21,6 +19,7 @@ class EscalationEvent(EventManager.Event):
     """
     上报事件
     """
+
     def __init__(self, event_data):
         self.event_data = event_data
 
@@ -40,46 +39,56 @@ def post_data():
     return "ok", 204
 
 
-class ThreadPoolWSGIServer(WSGIServer):
-    """
-    线程池WSGI服务器
-    """
-
-    def __init__(self, server_address, app=None, max_workers=10, passthrough_errors=False,
-                 handler_class=WSGIRequestHandler, **kwargs):
-        super().__init__(server_address, handler_class, **kwargs)
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.app = app
-        self.ssl_context = None
-        self.multithread = True
-        self.multiprocess = False
-        self.threaded = True
-        self.passthrough_errors = passthrough_errors
-
-    def handle_request(self):
-        """
-        处理请求
-        """
-        request, client_address = self.get_request()
-        if self.verify_request(request, client_address):
-            self.executor.submit(self.process_request, request, client_address)
-
-    def serve_forever(self):
-        """
-        启动服务器
-        """
-        logger.info("监听服务器启动成功！")
-        while True:
-            self.handle_request()
-
-
-class ThreadPoolWSGIRequestHandler(WSGIRequestHandler):
-    def handle(self):
-        super().handle()
-
-
 config = GlobalConfig()
-server = ThreadPoolWSGIServer((config.server.host, config.server.port),
-                              app=app,
-                              max_workers=config.server.max_works)
-server.RequestHandlerClass = ThreadPoolWSGIRequestHandler
+if config.server.server == "werkzeug":
+    # 使用werkzeug服务器
+    from werkzeug.serving import WSGIRequestHandler
+
+
+    class ThreadPoolWSGIServer(WSGIServer):
+        """
+        线程池WSGI服务器
+        """
+
+        def __init__(self, server_address, app=None, max_workers=10, passthrough_errors=False,
+                     handler_class=WSGIRequestHandler, **kwargs):
+            super().__init__(server_address, handler_class, **kwargs)
+            self.executor = ThreadPoolExecutor(max_workers=max_workers)
+            self.app = app
+            self.ssl_context = None
+            self.multithread = True
+            self.multiprocess = False
+            self.threaded = True
+            self.passthrough_errors = passthrough_errors
+
+        def handle_request(self):
+            """
+            处理请求
+            """
+            request, client_address = self.get_request()
+            if self.verify_request(request, client_address):
+                self.executor.submit(self.process_request, request, client_address)
+
+        def serve_forever(self):
+            """
+            启动服务器
+            """
+            logger.info("监听服务器启动成功！")
+            while True:
+                self.handle_request()
+
+
+    class ThreadPoolWSGIRequestHandler(WSGIRequestHandler):
+        def handle(self):
+            super().handle()
+    server_ = ThreadPoolWSGIServer((config.server.host, config.server.port),
+                                  app=app,
+                                  max_workers=config.server.max_works)
+    server_.RequestHandlerClass = ThreadPoolWSGIRequestHandler
+    server = lambda: server_.serve_forever()
+elif config.server.server == "waitress":
+    # 使用waitress服务器
+    from waitress import serve
+    server = lambda: serve(app, host=config.server.host, port=config.server.port, threads=config.server.max_works)
+else:
+    raise ValueError("服务器类型错误: 未知服务器类型")

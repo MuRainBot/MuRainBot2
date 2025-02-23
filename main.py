@@ -142,11 +142,12 @@ if __name__ == '__main__':
 
     logger.info("启动监听服务器")
 
-    # 禁用werkzeug的日志记录
-    log = logging.getLogger('werkzeug')
-    log.disabled = True
+    if ConfigManager.GlobalConfig().server.server == "werkzeug":
+        # 禁用werkzeug的日志记录
+        log = logging.getLogger('werkzeug')
+        log.disabled = True
 
-    threading.Thread(target=ListenerServer.server.serve_forever, daemon=True).start()
+    threading.Thread(target=ListenerServer.server, daemon=True).start()
 
     try:
         while True:
