@@ -140,7 +140,7 @@ if __name__ == '__main__':
 
     threading.Thread(target=AutoRestartOnebot.check_heartbeat, daemon=True).start()
 
-    logger.info("启动监听服务器")
+    logger.info(f"启动监听服务器: {ConfigManager.GlobalConfig().server.server}")
 
     if ConfigManager.GlobalConfig().server.server == "werkzeug":
         # 禁用werkzeug的日志记录

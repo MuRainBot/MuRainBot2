@@ -73,7 +73,6 @@ if config.server.server == "werkzeug":
             """
             启动服务器
             """
-            logger.info("监听服务器启动成功！")
             while True:
                 self.handle_request()
 
