@@ -147,7 +147,7 @@ if __name__ == '__main__':
         log = logging.getLogger('werkzeug')
         log.disabled = True
 
-    threading.Thread(target=ListenerServer.server, daemon=True).start()
+    threading.Thread(target=ListenerServer.start_server, daemon=True).start()
 
     try:
         while True:

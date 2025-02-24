@@ -80,14 +80,17 @@ if config.server.server == "werkzeug":
     class ThreadPoolWSGIRequestHandler(WSGIRequestHandler):
         def handle(self):
             super().handle()
-    server_ = ThreadPoolWSGIServer((config.server.host, config.server.port),
-                                  app=app,
-                                  max_workers=config.server.max_works)
-    server_.RequestHandlerClass = ThreadPoolWSGIRequestHandler
-    server = lambda: server_.serve_forever()
+
+
+    server = ThreadPoolWSGIServer((config.server.host, config.server.port),
+                                   app=app,
+                                   max_workers=config.server.max_works)
+    server.RequestHandlerClass = ThreadPoolWSGIRequestHandler
+    start_server = lambda: server.serve_forever()
 elif config.server.server == "waitress":
     # 使用waitress服务器
     from waitress import serve
-    server = lambda: serve(app, host=config.server.host, port=config.server.port, threads=config.server.max_works)
+
+    start_server = lambda: serve(app, host=config.server.host, port=config.server.port, threads=config.server.max_works)
 else:
     raise ValueError("服务器类型错误: 未知服务器类型")
