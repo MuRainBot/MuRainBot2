@@ -125,6 +125,7 @@ class GlobalConfig(ConfigManager):
         """
         host: str
         port: int
+        server: str
         max_works: int
 
     @dataclasses.dataclass
@@ -177,6 +178,7 @@ api:  # Api设置
 server:  # 监听服务器设置
   host: '127.0.0.1'
   port: 5701
+  server: 'werkzeug'  # 使用的服务器（werkzeug或waitress，使用waitress需先pip install waitress）
   max_works: 4  # 最大工作线程数
 
 thread_pool:  # 线程池相关
@@ -196,7 +198,6 @@ auto_restart_onebot:  # 在Onebot实现端状态异常时自动重启Onebot实�
 
 command:  # 命令相关
   command_start: ["/"]  # 命令起始符
-
 """
 
     def __new__(cls):
@@ -233,6 +234,7 @@ command:  # 命令相关
         self.server = self.Server(
             host=self.get("server", {}).get("host", ""),
             port=self.get("server", {}).get("port", 5701),
+            server=self.get("server", {}).get("server", "werkzeug").lower(),
             max_works=self.get("server", {}).get("max_works", 4)
         )
         self.thread_pool = self.ThreadPool(

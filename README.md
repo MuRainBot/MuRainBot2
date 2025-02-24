@@ -1,21 +1,11 @@
-<h1 align="center">MuRain Bot2(MRB2)</h1>
-<p align="center" class="shields">
-    <a href="https://github.com/MuRainBot/MuRainBot2/issues" style="text-decoration:none">
-        <img src="https://img.shields.io/github/issues/MuRainBot/MuRainBot2.svg?style=for-the-badge" alt="GitHub issues"/>
-    </a>
-    <a href="https://github.com/MuRainBot/MuRainBot2/stargazers" style="text-decoration:none" >
-        <img src="https://img.shields.io/github/stars/MuRainBot/MuRainBot2.svg?style=for-the-badge" alt="GitHub stars"/>
-    </a>
-    <a href="https://github.com/MuRainBot/MuRainBot2/forks" style="text-decoration:none" >
-        <img src="https://img.shields.io/github/forks/MuRainBot/MuRainBot2.svg?style=for-the-badge" alt="GitHub forks"/>
-    </a>
-    <!--
-    <a href="https://github.com/MuRainBot/MuRainBot2/actions">
-        <img src="https://img.shields.io/github/actions/workflow/status/MuRainBot/MuRainBot2/vuepress-deploy.yml?style=for-the-badge">
-    </a>
-    -->
+<div align="center">
+
+![MuRainBot2](https://socialify.git.ci/MuRainBot/MuRainBot2/image?custom_description=%E5%9F%BA%E4%BA%8Epython%E9%80%82%E9%85%8Donebot11%E5%8D%8F%E8%AE%AE%E7%9A%84%E8%BD%BB%E9%87%8F%E7%BA%A7QQBot%E6%A1%86%E6%9E%B6&description=1&forks=1&issues=1&logo=https%3A%2F%2Fgithub.com%2FMuRainBot%2FMuRainBot2Doc%2Fblob%2Fmaster%2Fdocs%2Fpublic%2Ficon.png%3Fraw%3Dtrue&name=1&pattern=Overlapping+Hexagons&pulls=1&stargazers=1&theme=Auto)
     <a href="https://github.com/MuRainBot/MuRainBot2/blob/master/LICENSE" style="text-decoration:none" >
-        <img src="https://img.shields.io/static/v1?label=LICENSE&message=GPL-3.0&color=lightrey&style=for-the-badge" alt="GitHub license"/>
+        <img src="https://img.shields.io/static/v1?label=LICENSE&message=LGPL-2.1&color=lightrey&style=for-the-badge" alt="GitHub license"/>
+    </a>
+    <a href="https://python.org/">
+        <img src="https://img.shields.io/badge/python-3.12+-blue?logo=python&logoColor=edb641&style=for-the-badge" alt="python">
     </a>
     <a href="https://github.com/botuniverse/onebot" style="text-decoration:none">
         <img src="https://img.shields.io/badge/OneBot-11-black?style=for-the-badge&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHAAAABwCAMAAADxPgR5AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAAxQTFRF////29vbr6+vAAAAk1hCcwAAAAR0Uk5T////AEAqqfQAAAKcSURBVHja7NrbctswDATQXfD//zlpO7FlmwAWIOnOtNaTM5JwDMa8E+PNFz7g3waJ24fviyDPgfhz8fHP39cBcBL9KoJbQUxjA2iYqHL3FAnvzhL4GtVNUcoSZe6eSHizBcK5LL7dBr2AUZlev1ARRHCljzRALIEog6H3U6bCIyqIZdAT0eBuJYaGiJaHSjmkYIZd+qSGWAQnIaz2OArVnX6vrItQvbhZJtVGB5qX9wKqCMkb9W7aexfCO/rwQRBzsDIsYx4AOz0nhAtWu7bqkEQBO0Pr+Ftjt5fFCUEbm0Sbgdu8WSgJ5NgH2iu46R/o1UcBXJsFusWF/QUaz3RwJMEgngfaGGdSxJkE/Yg4lOBryBiMwvAhZrVMUUvwqU7F05b5WLaUIN4M4hRocQQRnEedgsn7TZB3UCpRrIJwQfqvGwsg18EnI2uSVNC8t+0QmMXogvbPg/xk+Mnw/6kW/rraUlvqgmFreAA09xW5t0AFlHrQZ3CsgvZm0FbHNKyBmheBKIF2cCA8A600aHPmFtRB1XvMsJAiza7LpPog0UJwccKdzw8rdf8MyN2ePYF896LC5hTzdZqxb6VNXInaupARLDNBWgI8spq4T0Qb5H4vWfPmHo8OyB1ito+AysNNz0oglj1U955sjUN9d41LnrX2D/u7eRwxyOaOpfyevCWbTgDEoilsOnu7zsKhjRCsnD/QzhdkYLBLXjiK4f3UWmcx2M7PO21CKVTH84638NTplt6JIQH0ZwCNuiWAfvuLhdrcOYPVO9eW3A67l7hZtgaY9GZo9AFc6cryjoeFBIWeU+npnk/nLE0OxCHL1eQsc1IciehjpJv5mqCsjeopaH6r15/MrxNnVhu7tmcslay2gO2Z1QfcfX0JMACG41/u0RrI9QAAAABJRU5ErkJggg==" alt="Badge">
@@ -24,7 +14,7 @@
     <a href="https://github.com/MuRainBot/MuRainBot2">
         <img src="https://counter.seku.su/cmoe?name=murainbot2&theme=moebooru" alt=""/>
     </a>
-</p>
+</div>
 
 
 ## 🤔概述
@@ -118,12 +108,11 @@ MRB2的插件，统一放在`plugins`文件夹中，每个插件都是一个pyth
 ### 具体可查看本项目的[`文档`](https://mrb2.xiaosu.icu)
 
 ## 📕关于版本
-* 目前MRB2版本为2.0.0-dev
+* 目前MRB2版本为1.0.0-dev
 
-~~*你问我为什么第一个版本就是2.0.0?因为这是MRB2嘛自然就是2.0.0开始的咯*~~
 * 关于版本号的说明：
-   * 版本号格式为`<主版本>.<次版本>.<修订版本>-<特殊提醒/版本(如果有)>` 例如`2.0.0`
-   * 测试版版本号后统一添加`-dev`后缀 例如`2.0.0-dev`
+   * 版本号格式为`<主版本>.<次版本>.<修订版本>-<特殊提醒/版本(如果有)>` 例如`1.0.0`
+   * 开发版版本号后统一添加`-dev`后缀 例如`1.0.0-dev`
 
 ## ❤️鸣谢❤️
 

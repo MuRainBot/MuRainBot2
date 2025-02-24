@@ -637,7 +637,7 @@ class GroupPokeEvent(NoticeEvent):
             f"{qq_data.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data.get_group_member_info(self.user_id, self.user_id).get_nickname()}"  # user_id is the poker
+            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"  # user_id is the poker
             f"({self.user_id}) "
             f"戳了戳 "
             f"{qq_data.get_group_member_info(self.group_id, self.target_id).get_nickname()}"  # target_id is pokered
