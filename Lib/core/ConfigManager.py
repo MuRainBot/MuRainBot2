@@ -32,7 +32,7 @@ class ConfigManager:
                 with open(self.config_path, encoding="utf-8") as f:
                     self.config = yaml.safe_load(f)
             except Exception as e:
-                logger.error(f"配置文件加载失败，请检查配置文件内容是否正确。"
+                logger.error(f"配置文件 {self.config_path} 加载失败，请检查配置文件内容是否正确。"
                              f"如果无法修复，请删除配置文件重新配置，以创建默认配置文件。"
                              f"错误信息：{repr(e)}")
         else:
@@ -40,18 +40,18 @@ class ConfigManager:
                 if isinstance(self.default_config, str):
                     with open(self.config_path, "w", encoding="utf-8") as f:
                         f.write(self.default_config)
-                        logger.info("配置文件不存在，已创建默认配置文件")
+                        logger.info(f"配置文件 {self.config_path} 不存在，已创建默认配置文件")
                     self.load_config()
                 elif isinstance(self.default_config, dict):
                     with open(self.config_path, "w", encoding="utf-8") as f:
                         yaml.safe_dump(self.default_config, f)
-                        logger.info("配置文件不存在，已创建默认配置文件")
+                        logger.info(f"配置文件 {self.config_path} 不存在，已创建默认配置文件")
                     self.load_config()
                 else:
-                    logger.error("配置文件不存在，且未提供默认配置，无法创建默认配置文件")
+                    logger.error(f"配置文件 {self.config_path} 不存在，且未提供默认配置，无法创建默认配置文件")
                     self.config = {}
             except Exception as e:
-                logger.error(f"配置文件创建失败，请检查配置文件路径是否正确。错误信息：{repr(e)}")
+                logger.error(f"配置文件 {self.config_path} 创建失败，请检查配置文件路径是否正确。错误信息：{repr(e)}")
                 self.config = {}
         self.init()
 
