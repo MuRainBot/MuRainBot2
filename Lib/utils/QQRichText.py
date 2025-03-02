@@ -5,6 +5,7 @@ import inspect
 import json
 import os
 import re
+import traceback
 from typing import Any
 from urllib.parse import urlparse
 
@@ -114,7 +115,7 @@ def cq_2_array(cq: str) -> list[dict[str, dict[str, Any]]]:
             else:
                 segment_data[now_key] += c  # 继续拼接参数值
 
-    if len(segment_data["text"]):  # 处理末尾可能存在的文本内容
+    if "text" in segment_data and len(segment_data["text"]):  # 处理末尾可能存在的文本内容
         cq_array.append({"type": "text", "data": {"text": segment_data["text"]}})
 
     return cq_array
@@ -300,8 +301,8 @@ class Text(Segment):
         Args:
             text: 文本
         """
-        super().__init__(text)
-        self.text = self["data"]["text"] = text
+        self.text = text
+        super().__init__({"type": "text", "data": {"text": text}})
 
     def __add__(self, other):
         other = Text(other)
@@ -1006,6 +1007,7 @@ class QQRichText:
     """
     QQ富文本
     """
+
     def __init__(self, *rich: str | dict | list | tuple | Segment):
         """
         Args:
@@ -1088,7 +1090,8 @@ class QQRichText:
                             segment.set_data(k, v)
                     rich[_] = segment
                 except Exception as e:
-                    Logger.logger.warning(f"转换{rich[_]}时失败，报错信息: {repr(e)}")
+                    Logger.get_logger().warning(f"转换{rich[_]}时失败，报错信息: {repr(e)}\n"
+                                                f"{traceback.format_exc()}")
                     rich[_] = Segment(rich[_])
             else:
                 rich[_] = Segment(rich[_])
@@ -1178,4 +1181,8 @@ if __name__ == "__main__":
     print(QQRichText(At(114514)))
     print(Segment(At(1919810)))
     print(QQRichText([{"type": "text", "data": {"text": "1919810"}}]))
-    print(QQRichText().add(At(114514)).add(Text("我吃柠檬"))+QQRichText(At(1919810)).rich_array)
+    print(QQRichText().add(At(114514)).add(Text("我吃柠檬")) + QQRichText(At(1919810)).rich_array)
+    rich_array = [{'type': 'at', 'data': {'qq': '123'}}, {'type': 'text', 'data': {'text': '[期待]'}}]
+    rich = QQRichText(rich_array)
+    print(rich)
+    print(rich.get_array())
