@@ -49,61 +49,72 @@ def cq_encode(text, in_cq: bool = False) -> str:
 
 def cq_2_array(cq: str) -> list[dict[str, dict[str, Any]]]:
     """
-    CQCode转array消息段数组
+    将CQCode格式的字符串转换为消息段数组。
+
     Args:
-        cq: CQCode
+        cq (str): CQCode字符串。
+
     Returns:
-        array消息段
+        list[dict[str, dict[str, Any]]]: 解析后的消息段数组。
     """
     if not isinstance(cq, str):
         raise TypeError("cq_2_array: 输入类型错误")
 
-    cq_array = []
-    now_state = 0  # 0: 不在cq码内；1: 在CQ码的类型内；2: 在CQ码的参数的键内；3: 在CQ码的参数的值内
-    segment_data = {"text": ""}
-    now_key = ""
-    now_segment_type = ""
+    cq_array = []  # 存储解析后的消息段
+    now_state = 0  # 当前解析状态
+    # 0: 不在CQ码内
+    # 1: 在CQ码的类型部分
+    # 2: 在CQ码的参数键部分
+    # 3: 在CQ码的参数值部分
+
+    segment_data = {"text": ""}  # 用于存储当前解析的消息段
+    now_key = ""  # 当前解析的参数键
+    now_segment_type = ""  # 当前解析的CQ码类型
+
     for c in cq:
-        if now_state == 0:
-            if c == "[":
+        if now_state == 0:  # 解析普通文本
+            if c == "[":  # 进入CQ码解析
                 now_state = 1
-                if len(segment_data["text"]):
+                if len(segment_data["text"]):  # 先存储之前的普通文本
                     cq_array.append({"type": "text", "data": {"text": cq_decode(segment_data["text"])}})
-                segment_data = {}
+                segment_data = {}  # 重置segment_data用于存储新的CQ码
             else:
-                segment_data["text"] += c
-        elif now_state == 1:
-            if c == ",":
+                segment_data["text"] += c  # 继续拼接普通文本
+
+        elif now_state == 1:  # 解析CQ码类型
+            if c == ",":  # 类型解析结束，进入参数键解析
                 now_state = 2
-                now_segment_type = now_segment_type[3:]
+                now_segment_type = now_segment_type[3:]  # 移除CQ:前缀
             else:
-                now_segment_type += c
-        elif now_state == 2:
-            if c == "=":
+                now_segment_type += c  # 继续拼接类型字符串
+
+        elif now_state == 2:  # 解析参数键
+            if c == "=":  # 键名解析结束，进入值解析
                 now_state = 3
-                now_key = cq_decode(now_key, in_cq=True)
+                now_key = cq_decode(now_key, in_cq=True)  # 解码键名
                 if now_key not in segment_data:
-                    segment_data[now_key] = ""
+                    segment_data[now_key] = ""  # 初始化键值
                 else:
                     raise ValueError("cq_2_array: CQ码键名称重复")
             else:
-                now_key += c
-        elif now_state == 3:
-            if c == "]":
-                now_state = 0
-                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)
-                cq_array.append({"type": now_segment_type, "data": segment_data})
-                segment_data = {"text": ""}
-                now_segment_type = ""
-                now_key = ""
-            elif c == ",":
-                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)
-                now_state = 2
-                now_key = ""
-            else:
-                segment_data[now_key] += c
+                now_key += c  # 继续拼接键名
 
-    if len(segment_data["text"]):
+        elif now_state == 3:  # 解析参数值
+            if c == "]":  # CQ码结束
+                now_state = 0
+                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)  # 解码值
+                cq_array.append({"type": now_segment_type, "data": segment_data})  # 存入解析结果
+                segment_data = {"text": ""}  # 重置segment_data
+                now_segment_type = ""  # 清空类型
+                now_key = ""  # 清空键名
+            elif c == ",":  # 进入下一个参数键解析
+                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)  # 解码值
+                now_state = 2
+                now_key = ""  # 清空键名，准备解析下一个键
+            else:
+                segment_data[now_key] += c  # 继续拼接参数值
+
+    if len(segment_data["text"]):  # 处理末尾可能存在的文本内容
         cq_array.append({"type": "text", "data": {"text": segment_data["text"]}})
 
     return cq_array
