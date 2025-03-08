@@ -103,12 +103,12 @@ def load_plugins():
         file_path = plugin["file_path"]
         full_path = plugin["path"]
 
-        logger.debug(f"开始加载插件 {file_path}")
-
         if plugin["plugin"] is not None:
             # 由于其他原因已被加载（例如插件依赖）
             logger.debug(f"插件 {name} 已被加载，跳过加载")
             continue
+
+        logger.debug(f"开始尝试加载插件 {file_path}")
 
         try:
             module, plugin_info = load_plugin(plugin)
@@ -122,10 +122,8 @@ def load_plugins():
             continue
 
         except Exception as e:
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-
             logger.error(f"尝试加载插件 {full_path} 时失败！ 原因:{repr(e)}\n"
-                         f"{"".join(traceback.format_exception(exc_type, exc_value, exc_traceback))}")
+                         f"{"".join(traceback.format_exc())}")
 
             plugins.remove(plugin)
 
@@ -157,7 +155,7 @@ def requirement_plugin(plugin_name: str):
     Returns:
         依赖的插件的信息
     """
-    logger.debug(f"由于插件依赖，正在加载插件 {plugin_name}")
+    logger.debug(f"由于插件依赖，正在尝试加载插件 {plugin_name}")
     for plugin in plugins:
         if plugin["name"] == plugin_name:
             if plugin["plugin"] is None:
@@ -165,9 +163,16 @@ def requirement_plugin(plugin_name: str):
                     module, plugin_info = load_plugin(plugin)
                     plugin["info"] = plugin_info
                     plugin["plugin"] = module
+                except NotEnabledPluginException:
+                    logger.error(f"被依赖的插件 {plugin_name} 已被禁用，无法加载依赖")
+                    raise Exception(f"被依赖的插件 {plugin_name} 已被禁用，无法加载依赖")
                 except Exception as e:
-                    logger.error(f"尝试加载插件 {plugin_name} 时失败！ 原因:{repr(e)}")
+                    logger.error(f"尝试加载插件 {plugin_name} 时失败！ 原因:{repr(e)}\n"
+                                  f"{"".join(traceback.format_exc())}")
                     raise e
+                logger.debug(f"由于插件依赖，插件 {plugin_name} 加载成功！")
+            else:
+                logger.debug(f"由于插件依赖，插件 {plugin_name} 已被加载，跳过加载")
             return plugin
     else:
         raise FileNotFoundError(f"插件 {plugin_name} 不存在")
