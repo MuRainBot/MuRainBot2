@@ -9,7 +9,9 @@ MuRainBot2
 #  |_|  |_|\__,_|_| \_\__,_|_|_| |_| |____/ \___/ \__|_____|
 import atexit
 import logging
+import random
 import threading
+import time
 
 BANNER = r""" __  __       ____       _         ____        _   _____ 
 |  \/  |_   _|  _ \ __ _(_)_ __   | __ )  ___ | |_|___  \
@@ -50,13 +52,29 @@ def get_gradient(start_color: tuple[int, int, int], end_color: tuple[int, int, i
     )
 
 
+def print_loading(wait_str):
+    """
+    输出加载动画
+    """
+    loading_string_list = [r"|/-\\", r"▁▂▃▄▅▆▇█▇▆▅▄▃▂", r"⠁⠈⠐⠠⢀⡀⠄⠂", r"←↖↑↗→↘↓↙"]
+    loading_string = random.choice(loading_string_list)
+    i = 0
+    while not is_done:
+        if i == len(loading_string):
+            i = 0
+        print("\r" + wait_str + color_text(loading_string[i], banner_start_color), end="")
+        time.sleep(0.07)
+        i += 1
+
+
 # 主函数
 if __name__ == '__main__':
     banner_start_color = (14, 190, 255)
     banner_end_color = (255, 66, 179)
-    color_banner = ""
     banner = BANNER.split("\n")
+    # 输出banner
     for i in range(len(banner)):
+        color_banner = ""
         for j in range(len(banner[i])):
             color_banner += color_text(
                 banner[i][j],
@@ -66,11 +84,21 @@ if __name__ == '__main__':
                     ((j / (len(banner[i]) - 1) + i / (len(banner) - 1)) / 2)
                 )
             )
-        color_banner += "\n"
-    print(color_banner + color_text(BANNER_LINK, get_gradient(banner_start_color, banner_end_color, 0.5))
-          + color_text("\n正在加载 Lib, 首次启动可能需要几秒钟，请稍等...", banner_start_color), end="")
-    import time
+        print(color_banner, flush=True)
+        time.sleep(0.05)
 
+    # 输出项目链接
+    for c in color_text(BANNER_LINK, get_gradient(banner_start_color, banner_end_color, 0.5)):
+        print(c, end="", flush=True)
+        time.sleep(0.02)
+
+    wait_str = color_text("正在加载 Lib, 首次启动可能需要几秒钟，请稍等...", banner_start_color)
+    print("\n" + wait_str, end="")
+    is_done = False
+
+    threading.Thread(target=print_loading, daemon=True, args=(wait_str,)).start()
+
+    # 开始加载
     start_loading = time.time()
 
     from Lib.utils import Logger
@@ -100,8 +128,10 @@ if __name__ == '__main__':
 
     Logger.set_logger_level(logging.DEBUG if ConfigManager.GlobalConfig().debug.enable else logging.INFO)
 
+    is_done = True
+
     print("\r" + color_text(
-        f"Lib 加载完成！耗时: {round(time.time() - start_loading, 2)}s 正在启动 MuRainBot...",
+        f"Lib 加载完成！耗时: {round(time.time() - start_loading, 2)}s 正在启动 MuRainBot...  ",
         banner_end_color
     )
           )

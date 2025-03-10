@@ -5,6 +5,7 @@ import inspect
 import json
 import os
 import re
+import traceback
 from typing import Any
 from urllib.parse import urlparse
 
@@ -49,43 +50,74 @@ def cq_encode(text, in_cq: bool = False) -> str:
 
 def cq_2_array(cq: str) -> list[dict[str, dict[str, Any]]]:
     """
-    CQCode转array消息段
+    将CQCode格式的字符串转换为消息段数组。
+
     Args:
-        cq: CQCode
+        cq (str): CQCode字符串。
+
     Returns:
-        array消息段
+        list[dict[str, dict[str, Any]]]: 解析后的消息段数组。
     """
     if not isinstance(cq, str):
         raise TypeError("cq_2_array: 输入类型错误")
 
-    # 匹配CQ码或纯文本（纯文本不含[]，利用这一点区分CQ码和纯文本）
-    pattern = r"\[CQ:(\w+)(?:,([^\]]+))?\]|([^[\]]+)"
+    cq_array = []  # 存储解析后的消息段
+    now_state = 0  # 当前解析状态
+    # 0: 不在CQ码内
+    # 1: 在CQ码的类型部分
+    # 2: 在CQ码的参数键部分
+    # 3: 在CQ码的参数值部分
 
-    # 匹配CQCode
-    list_ = re.findall(pattern, cq)
-    cq_array = []
-    # 处理CQ码
-    for rich in list_:
-        # CQ码的结果类似('at', 'qq=114514', '')，而纯文本类似('', '', ' -  &#91;x&#93; 使用 `&amp;data` 获取地址')
-        # 检测第一个值是否为空字符串即可区分
+    segment_data = {"text": ""}  # 用于存储当前解析的消息段
+    now_key = ""  # 当前解析的参数键
+    now_segment_type = ""  # 当前解析的CQ码类型
 
-        if rich[0]:  # CQ码
-            cq_array.append({
-                "type": rich[0],  # CQ码类型
-                "data": dict(
-                    map(
-                        lambda x: cq_decode(x, in_cq=True).split("=", 1),
-                        rich[1].split(",")
-                    )
-                ) if rich[1] else {},
-            })
-        else:  # 纯文本
-            cq_array.append({
-                "type": "text",
-                "data": {
-                    "text": cq_decode(rich[2])
-                }
-            })
+    for c in cq:
+        if now_state == 0:  # 解析普通文本
+            if c == "[":  # 进入CQ码解析
+                now_state = 1
+                if len(segment_data["text"]):  # 先存储之前的普通文本
+                    cq_array.append({"type": "text", "data": {"text": cq_decode(segment_data["text"])}})
+                segment_data = {}  # 重置segment_data用于存储新的CQ码
+            else:
+                segment_data["text"] += c  # 继续拼接普通文本
+
+        elif now_state == 1:  # 解析CQ码类型
+            if c == ",":  # 类型解析结束，进入参数键解析
+                now_state = 2
+                now_segment_type = now_segment_type[3:]  # 移除CQ:前缀
+            else:
+                now_segment_type += c  # 继续拼接类型字符串
+
+        elif now_state == 2:  # 解析参数键
+            if c == "=":  # 键名解析结束，进入值解析
+                now_state = 3
+                now_key = cq_decode(now_key, in_cq=True)  # 解码键名
+                if now_key not in segment_data:
+                    segment_data[now_key] = ""  # 初始化键值
+                else:
+                    raise ValueError("cq_2_array: CQ码键名称重复")
+            else:
+                now_key += c  # 继续拼接键名
+
+        elif now_state == 3:  # 解析参数值
+            if c == "]":  # CQ码结束
+                now_state = 0
+                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)  # 解码值
+                cq_array.append({"type": now_segment_type, "data": segment_data})  # 存入解析结果
+                segment_data = {"text": ""}  # 重置segment_data
+                now_segment_type = ""  # 清空类型
+                now_key = ""  # 清空键名
+            elif c == ",":  # 进入下一个参数键解析
+                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)  # 解码值
+                now_state = 2
+                now_key = ""  # 清空键名，准备解析下一个键
+            else:
+                segment_data[now_key] += c  # 继续拼接参数值
+
+    if "text" in segment_data and len(segment_data["text"]):  # 处理末尾可能存在的文本内容
+        cq_array.append({"type": "text", "data": {"text": segment_data["text"]}})
+
     return cq_array
 
 
@@ -93,7 +125,7 @@ def array_2_cq(cq_array: list | dict) -> str:
     """
     array消息段转CQCode
     Args:
-        cq_array: array消息段
+        cq_array: array消息段数组
     Returns:
         CQCode
     """
@@ -269,8 +301,8 @@ class Text(Segment):
         Args:
             text: 文本
         """
-        super().__init__(text)
-        self.text = self["data"]["text"] = text
+        self.text = text
+        super().__init__({"type": "text", "data": {"text": text}})
 
     def __add__(self, other):
         other = Text(other)
@@ -975,6 +1007,7 @@ class QQRichText:
     """
     QQ富文本
     """
+
     def __init__(self, *rich: str | dict | list | tuple | Segment):
         """
         Args:
@@ -1057,7 +1090,8 @@ class QQRichText:
                             segment.set_data(k, v)
                     rich[_] = segment
                 except Exception as e:
-                    Logger.logger.warning(f"转换{rich[_]}时失败，报错信息: {repr(e)}")
+                    Logger.get_logger().warning(f"转换{rich[_]}时失败，报错信息: {repr(e)}\n"
+                                                f"{traceback.format_exc()}")
                     rich[_] = Segment(rich[_])
             else:
                 rich[_] = Segment(rich[_])
@@ -1140,11 +1174,15 @@ if __name__ == "__main__":
     rich = QQRichText(
         "[CQ:reply,id=123][CQ:share,title=标题,url=https://baidu.com] [CQ:at,qq=1919810,abc=123] -  &#91;x&#93; 使用 "
         " `&amp;data` 获取地址")
-    print(rich.rich_array)
+    print(rich.get_array())
     print(rich)
     print(rich.render())
 
     print(QQRichText(At(114514)))
     print(Segment(At(1919810)))
     print(QQRichText([{"type": "text", "data": {"text": "1919810"}}]))
-    print(QQRichText().add(At(114514)).add(Text("我吃柠檬"))+QQRichText(At(1919810)).rich_array)
+    print(QQRichText().add(At(114514)).add(Text("我吃柠檬")) + QQRichText(At(1919810)).rich_array)
+    rich_array = [{'type': 'at', 'data': {'qq': '123'}}, {'type': 'text', 'data': {'text': '[期待]'}}]
+    rich = QQRichText(rich_array)
+    print(rich)
+    print(rich.get_array())

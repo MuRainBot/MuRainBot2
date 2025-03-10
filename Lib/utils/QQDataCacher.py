@@ -279,6 +279,7 @@ class QQDataCache:
     QQ数据缓存类
     """
     _instance = None
+    _initialized = False
 
     def __new__(cls):
         if not cls._instance:
@@ -286,9 +287,18 @@ class QQDataCache:
         return cls._instance
 
     def __init__(self):
+        if not self._initialized:
+            self._initialized = True
+        else:
+            return
         self.group_info = {}
         self.group_member_info = {}
         self.user_info = {}
+
+        self.group_info_lock = threading.Lock()
+        self.group_member_info_lock = threading.Lock()
+        self.user_info_lock = threading.Lock()
+
         self.max_cache_size = ConfigManager.GlobalConfig().qq_data_cache.max_cache_size
         self.expire_time = expire_time
         # 启动垃圾回收线程
@@ -302,12 +312,13 @@ class QQDataCache:
         Returns:
             None
         """
-        if user_id not in self.user_info:
-            data = UserData(user_id, *args, **kwargs)
-            self.user_info[user_id] = data
+        with self.user_info_lock:
+            if user_id not in self.user_info:
+                data = UserData(user_id, *args, **kwargs)
+                self.user_info[user_id] = data
 
-        data = self.user_info[user_id]
-        return data
+            data = self.user_info[user_id]
+            return data
 
     def get_group_info(self, group_id: int, *args, **kwargs) -> GroupData:
         """
@@ -317,12 +328,13 @@ class QQDataCache:
         Returns:
             None
         """
-        if group_id not in self.group_info:
-            data = GroupData(group_id, *args, **kwargs)
-            self.group_info[group_id] = data
+        with self.group_info_lock:
+            if group_id not in self.group_info:
+                data = GroupData(group_id, *args, **kwargs)
+                self.group_info[group_id] = data
 
-        data = self.group_info[group_id]
-        return data
+            data = self.group_info[group_id]
+            return data
 
     def get_group_member_info(self, group_id: int, user_id: int, *args, **kwargs) -> GroupMemberData:
         """
@@ -333,15 +345,16 @@ class QQDataCache:
         Returns:
             None
         """
-        if group_id not in self.group_member_info:
-            self.group_member_info[group_id] = {}
+        with self.group_member_info_lock:
+            if group_id not in self.group_member_info:
+                self.group_member_info[group_id] = {}
 
-        if user_id not in self.group_member_info[group_id]:
-            data = GroupMemberData(group_id, user_id, *args, **kwargs)
-            self.group_member_info[group_id][user_id] = data
+            if user_id not in self.group_member_info[group_id]:
+                data = GroupMemberData(group_id, user_id, *args, **kwargs)
+                self.group_member_info[group_id][user_id] = data
 
-        data = self.group_member_info[group_id][user_id]
-        return data
+            data = self.group_member_info[group_id][user_id]
+            return data
 
     def garbage_collection(self):
         """
@@ -349,33 +362,44 @@ class QQDataCache:
         Returns:
             None
         """
-        for k in list(self.group_member_info.keys()):
-            group_member_items = list(zip(self.group_member_info[k].keys(), self.group_member_info[k].values()))
-            max_last_use_time = max([item[1].last_use for item in group_member_items])
+        counter = 0
 
-            if max_last_use_time < time.time() - self.expire_time * 2:
-                del self.group_member_info[k]
-                return
+        with self.group_info_lock:
+            for k in list(self.group_member_info.keys()):
+                group_member_items = list(zip(self.group_member_info[k].keys(), self.group_member_info[k].values()))
+                max_last_use_time = max([item[1].last_use for item in group_member_items])
 
-            group_member_items.sort(key=lambda x: x[1].last_use)
-            if len(group_member_items) > self.max_cache_size * (2 / 3):
-                for user_id, _ in group_member_items[:int(self.max_cache_size * (1 / 3))]:
-                    del self.group_member_info[k][user_id]
-            del group_member_items, max_last_use_time
+                if max_last_use_time < time.time() - self.expire_time * 2:
+                    del self.group_member_info[k]
+                    counter += 1
+                    continue
 
-        group_items = list(zip(self.group_info.keys(), self.group_info.values()))
-        group_items.sort(key=lambda x: x[1].last_use)
-        if len(group_items) > self.max_cache_size * (2 / 3):
-            for group_id, _ in group_items[:int(self.max_cache_size * (1 / 3))]:
-                del self.group_info[group_id]
-        del group_items
+                group_member_items.sort(key=lambda x: x[1].last_use)
+                if len(group_member_items) > self.max_cache_size * (2 / 3):
+                    for user_id, _ in group_member_items[:int(self.max_cache_size * (1 / 3))]:
+                        del self.group_member_info[k][user_id]
+                        counter += 1
+                del group_member_items, max_last_use_time
 
-        user_items = list(zip(self.user_info.keys(), self.user_info.values()))
-        user_items.sort(key=lambda x: x[1].last_use)
-        if len(user_items) > self.max_cache_size * (2 / 3):
-            for user_id, _ in user_items[:int(self.max_cache_size * (1 / 3))]:
-                del self.user_info[user_id]
-        del user_items
+        with self.group_info_lock:
+            group_items = list(zip(self.group_info.keys(), self.group_info.values()))
+            group_items.sort(key=lambda x: x[1].last_use)
+            if len(group_items) > self.max_cache_size * (2 / 3):
+                for group_id, _ in group_items[:int(self.max_cache_size * (1 / 3))]:
+                    del self.group_info[group_id]
+                    counter += 1
+            del group_items
+
+        with self.user_info_lock:
+            user_items = list(zip(self.user_info.keys(), self.user_info.values()))
+            user_items.sort(key=lambda x: x[1].last_use)
+            if len(user_items) > self.max_cache_size * (2 / 3):
+                for user_id, _ in user_items[:int(self.max_cache_size * (1 / 3))]:
+                    del self.user_info[user_id]
+                    counter += 1
+            del user_items
+
+        return counter
 
     def scheduled_garbage_collection(self):
         """
@@ -399,8 +423,8 @@ class QQDataCache:
                 t = 0
                 logger.debug("QQ数据缓存清理开始...")
                 try:
-                    self.garbage_collection()
-                    logger.debug("QQ数据缓存清理完成")
+                    counter = self.garbage_collection()
+                    logger.debug(f"QQ数据缓存清理完成，共清理了 {counter} 项信息。")
                 except Exception as e:
                     logger.warn(f"QQ数据缓存清理时出现异常: {repr(e)}")
 

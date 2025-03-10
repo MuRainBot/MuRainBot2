@@ -103,12 +103,13 @@ class CommandRule(Rule):
     会自动移除消息中的 @bot 和命令起始符，同时会自动将 别名 替换为 命令本身，以简化插件处理逻辑。
     """
 
-    def __init__(self, command: str, aliases: set[str] = None, command_start: list[str] = None):
+    def __init__(self, command: str, aliases: set[str] = None, command_start: list[str] = None, reply: bool = False):
         """
         Args:
             command: 命令
             aliases: 命令别名
             command_start: 命令起始符（不填写默认为配置文件中的command_start）
+            reply: 是否可包含回复（默认否）
         """
         if aliases is None:
             aliases = set()
@@ -122,44 +123,76 @@ class CommandRule(Rule):
         self.command = command
         self.aliases = aliases
         self.command_start = command_start
+        self.reply = reply
 
     def match(self, event_data: EventClassifier.MessageEvent):
+        # 检查是否是消息事件
         if not isinstance(event_data, EventClassifier.MessageEvent):
             logger.warning(f"event {event_data} is not a MessageEvent, cannot match command")
             return False
 
-        flag = False
+        # 复制一份消息段
         segments = copy.deepcopy(event_data.message.rich_array)
+
+        # 初始化是否@了机器人以及回复消息段的变量
+        is_at = False
+        reply_segment = None
+
+        # 检查消息是否以回复形式开始
+        if (
+                self.reply and
+                len(segments) > 0 and
+                isinstance(segments[0], QQRichText.Reply)
+        ):
+            reply_segment = segments[0]
+            segments = segments[1:]
+
+        # 检查消息是否以@机器人开始
         if (
                 len(segments) > 0 and
                 isinstance(segments[0], QQRichText.At) and
                 int(segments[0].data.get("qq")) == event_data.self_id
         ):
             segments = segments[1:]
-            flag = True
+            is_at = True
+
+        # 将消息段转换为字符串消息，并去除前导空格
         message = str(QQRichText.QQRichText(segments))
         while len(message) > 0 and message[0] == " ":
             message = message[1:]
 
-        message = QQRichText.QQRichText(message)
-        string_message = str(message)
+        # 重新将处理后的消息转换为QQRichText对象，并获取其字符串表示
+        string_message = str(QQRichText.QQRichText(message))
+
+        # 生成所有可能的命令前缀组合，包括命令起始符和别名
         commands = [_ + self.command for _ in self.command_start]
-        if flag:
+        if is_at:
             # 如果消息前面有at，则不需要命令起始符
             commands += [self.command] + [alias for alias in self.aliases]
 
+        # 添加所有别名的命令前缀组合
         commands += [_ + alias for alias in self.aliases for _ in self.command_start]
 
+        # 检查消息是否以任何预设命令前缀开始
         if any(string_message.startswith(_) for _ in commands):
+            # 移除命令前缀
             for start in self.command_start:
                 if string_message.startswith(start):
                     string_message = string_message[len(start):]
                     break
+            # 替换别名为主命令
             for alias in self.aliases:
                 if string_message.startswith(alias):
                     string_message = self.command + string_message[len(alias):]
                     break
+
+            # 更新消息对象
             message = QQRichText.QQRichText(string_message)
+
+            # 将回复消息段添加到消息段列表中(如果有)
+            if reply_segment is not None:
+                message.rich_array.insert(0, reply_segment)
+
             event_data.message = message
             event_data.raw_message = string_message
             return True
