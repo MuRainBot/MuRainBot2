@@ -239,7 +239,6 @@ def save_exc_dump(description: str = None, path: str = None):
         if path:
             kwargs["path"] = path
 
-        print(repr(kwargs))
         coredumpy.dump(**kwargs)
     except Exception as e:
         logger.error(f"保存异常堆栈时发生错误: {repr(e)}\n"
