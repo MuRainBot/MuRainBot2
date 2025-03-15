@@ -4,6 +4,7 @@
 import copy
 import traceback
 
+from Lib.common import save_exc_dump
 from Lib.core import EventManager, ConfigManager
 from Lib.utils import EventClassifier, Logger, QQRichText
 
@@ -65,8 +66,13 @@ class KeyValueRule(Rule):
                 case "func":
                     return self.func(event_data.get(self.key), self.value)
         except Exception as e:
-            logger.error(f"Error occurred while matching event {event_data}: {repr(e)}\n"
-                         f"{traceback.format_exc()}")
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(f"执行匹配事件器时出错 {event_data}")
+            else:
+                dump_path = None
+            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}\n"
+                         f"{traceback.format_exc()}"
+                         f"{f"已保存异常到 {dump_path}" if dump_path else ""}")
             return False
 
 
@@ -87,8 +93,15 @@ class FuncRule(Rule):
         try:
             return self.func(event_data)
         except Exception as e:
-            logger.error(f"Error occurred while matching event {event_data}: {repr(e)}\n"
-                         f"{traceback.format_exc()}")
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(f"执行匹配事件器时出错 {event_data}")
+            else:
+                dump_path = None
+
+            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}\n"
+                         f"{traceback.format_exc()}"
+                         f"{f"已保存异常到 {dump_path}" if dump_path else ""}"
+                         )
             return False
 
 
@@ -289,8 +302,15 @@ class Matcher:
                         logger.debug(f"处理器 {handler.__name__} 阻断了事件 {event_data} 的传播")
                         return
             except Exception as e:
-                logger.error(f"Error occurred while matching event {event_data}: {repr(e)}\n"
-                             f"{traceback.format_exc()}")
+                if ConfigManager.GlobalConfig().debug.save_dump:
+                    dump_path = save_exc_dump(f"执行匹配事件或执行处理器时出错 {event_data}")
+                else:
+                    dump_path = None
+                logger.error(
+                    f"执行匹配事件或执行处理器时出错 {event_data}: {repr(e)}\n"
+                    f"{traceback.format_exc()}"
+                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}"
+                )
 
 
 events_matchers: dict[str, dict[Type[EventClassifier.Event], list[tuple[int, list[Rule], Matcher]]]] = {}

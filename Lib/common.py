@@ -5,9 +5,11 @@
 import shutil
 import sys
 import time
+import traceback
 import uuid
 from collections import OrderedDict
 
+import coredumpy
 import requests
 
 from .constants import *
@@ -20,6 +22,7 @@ class LimitedSizeDict(OrderedDict):
     """
     带有限制大小的字典
     """
+
     def __init__(self, max_size):
         self._max_size = max_size
         super().__init__()
@@ -155,6 +158,7 @@ def function_cache(max_size: int, expiration_time: int = -1):
         Returns:
             None
         """
+
         def wrapper(*args, **kwargs):
             key = str(func.__name__) + str(args) + str(kwargs)
             if key in cache and (expiration_time == -1 or time.time() - cache[key][1] < expiration_time):
@@ -194,3 +198,52 @@ def finalize_and_cleanup():
 
     logger.warning("MuRainBot结束运行！")
     logger.info("再见！\n")
+
+
+def save_exc_dump(description: str = None, path: str = None):
+    """
+    保存异常堆栈
+    Args:
+        description: 保存的dump描述，为空则默认
+        path: 保存的路径，为空则自动根据错误生成
+    """
+    try:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        if not exc_traceback:
+            raise Exception("No traceback found")
+
+        # 遍历 traceback 链表，找到最后一个 frame (异常最初发生的位置)
+        current_tb = exc_traceback
+        while current_tb:
+            frame = current_tb.tb_frame
+            current_tb = current_tb.tb_next
+
+        i = 0
+        while True:
+            if i > 0:
+                path_ = os.path.join(DUMPS_PATH,
+                                     f"coredumpy_{time.strftime('%Y%m%d%H%M%S')}_{frame.f_code.co_name}_{i}.dump")
+            else:
+                path_ = os.path.join(DUMPS_PATH,
+                                     f"coredumpy_{time.strftime('%Y%m%d%H%M%S')}_{frame.f_code.co_name}.dump")
+            if not os.path.exists(path_):
+                break
+            i += 1
+
+        kwargs = {
+            "frame": frame,
+            "path": path_
+        }
+        if description:
+            kwargs["description"] = description
+        if path:
+            kwargs["path"] = path
+
+        print(repr(kwargs))
+        coredumpy.dump(**kwargs)
+    except Exception as e:
+        logger.error(f"保存异常堆栈时发生错误: {repr(e)}\n"
+                     f"{traceback.format_exc()}")
+        return None
+
+    return kwargs["path"]

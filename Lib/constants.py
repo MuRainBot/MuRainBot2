@@ -10,6 +10,7 @@ PLUGINS_PATH = os.path.join(WORK_PATH, "plugins")
 CONFIG_PATH = os.path.join(WORK_PATH, "config.yml")
 PLUGIN_CONFIGS_PATH = os.path.join(WORK_PATH, "plugin_configs")
 CACHE_PATH = os.path.join(DATA_PATH, "cache")
+DUMPS_PATH = os.path.join(DATA_PATH, "exc_dumps")
 
 if not os.path.exists(DATA_PATH):
     os.makedirs(DATA_PATH)

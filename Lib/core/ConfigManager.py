@@ -150,6 +150,7 @@ class GlobalConfig(ConfigManager):
         调试模式，若启用框架的日志等级将被设置为debug，不建议在生产环境开启
         """
         enable: bool
+        save_dump: bool
 
     @dataclasses.dataclass
     class AutoRestartOnebot:
@@ -192,6 +193,7 @@ qq_data_cache:  # QQ数据缓存设置
 
 debug:  # 调试模式，若启用框架的日志等级将被设置为debug，不建议在生产环境开启
   enable: false  # 是否启用调试模式
+  save_dump: true  # 是否在发生异常的同时报错一个dump错误文件（不受debug.enable约束，独立开关）
 
 auto_restart_onebot:  # 在Onebot实现端状态异常时自动重启Onebot实现端（需开启心跳包）
   enable: true  # 是否启用自动重启
@@ -246,7 +248,8 @@ command:  # 命令相关
             max_cache_size=self.get("qq_data_cache", {}).get("max_cache_size", 500)
         )
         self.debug = self.Debug(
-            enable=self.get("debug", {}).get("enable", False)
+            enable=self.get("debug", {}).get("enable", False),
+            save_dump=self.get("debug", {}).get("save_dump", True)
         )
         self.auto_restart_onebot = self.AutoRestartOnebot(
             enable=self.get("auto_restart_onebot", {}).get("enable", True)
