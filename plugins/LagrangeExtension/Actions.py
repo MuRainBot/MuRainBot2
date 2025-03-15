@@ -779,7 +779,8 @@ class GetFriendMsgHistory(Actions.Action):
 
     def logger(self, result, user_id: int, message_id: int, count: int):
         logger.debug(
-            f"获取好友 {cacher.get_user_info(user_id).get_nickname()}({user_id}) 历史聊天记录, message_id: {message_id}, count: {count}")
+            f"获取好友 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+            f"历史聊天记录, message_id: {message_id}, count: {count}")
 
 
 class GetGroupMsgHistory(Actions.Action):
@@ -805,7 +806,8 @@ class GetGroupMsgHistory(Actions.Action):
 
     def logger(self, result, group_id: int, message_id: str, count: int):
         logger.debug(
-            f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 历史聊天记录, message_id: {message_id}, count: {count}")
+            f"获取群 {cacher.get_group_info(group_id).group_name}"
+            f"({group_id}) 历史聊天记录, message_id: {message_id}, count: {count}")
 
 
 class GetMusicArk(Actions.Action):
@@ -910,7 +912,8 @@ class SendGroupAiRecord(Actions.Action):
 
     def logger(self, result, character: str, group_id: int, text: str, chat_type: int):
         logger.debug(
-            f"发送群 {cacher.get_group_info(group_id).group_name}({group_id}) Ai 语音, character: {character}, text: {text}, chat_type: {chat_type}")
+            f"发送群 {cacher.get_group_info(group_id).group_name}({group_id}) Ai 语音, "
+            f"character: {character}, text: {text}, chat_type: {chat_type}")
 
 
 class SendGroupForwardMsg(Actions.Action):

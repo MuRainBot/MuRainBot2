@@ -83,8 +83,8 @@ if config.server.server == "werkzeug":
 
 
     server = ThreadPoolWSGIServer((config.server.host, config.server.port),
-                                   app=app,
-                                   max_workers=config.server.max_works)
+                                  app=app,
+                                  max_workers=config.server.max_works)
     server.RequestHandlerClass = ThreadPoolWSGIRequestHandler
     start_server = lambda: server.serve_forever()
 elif config.server.server == "waitress":

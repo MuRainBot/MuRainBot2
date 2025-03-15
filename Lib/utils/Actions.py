@@ -699,7 +699,8 @@ class GetGroupMemberInfo(Action):
 
     def logger(self, result, group_id: int, user_id: int, no_cache: bool):
         logger.debug(
-            f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) 信息")
+            f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 成员 "
+            f"{cacher.get_user_info(user_id).get_nickname()}({user_id}) 信息")
 
 
 class GetGroupMemberList(Action):

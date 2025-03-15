@@ -226,7 +226,6 @@ class CommandRule(Rule):
         return True
 
 
-
 def _to_me(event_data: EventClassifier.MessageEvent):
     """
     判断是否是@自己或是私聊

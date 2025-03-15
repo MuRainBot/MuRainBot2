@@ -4,7 +4,6 @@ QQ富文本
 import inspect
 import json
 import os
-import re
 import traceback
 from typing import Any
 from urllib.parse import urlparse
