@@ -109,20 +109,7 @@ if __name__ == '__main__':
 
     from Lib import *
 
-    # 结束运行
-    @atexit.register
-    def finalize_and_cleanup():
-        """
-        结束运行
-        @return:
-        """
-        logger.info("MuRainBot即将关闭，正在删除缓存")
-
-        common.clean_cache()
-
-        logger.warning("MuRainBot结束运行！")
-        logger.info("再见！\n")
-
+    atexit.register(common.finalize_and_cleanup)
 
     ThreadPool.init()
 

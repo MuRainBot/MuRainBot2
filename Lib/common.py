@@ -181,3 +181,16 @@ def function_cache(max_size: int, expiration_time: int = -1):
         return wrapper
 
     return cache_decorator
+
+
+def finalize_and_cleanup():
+    """
+    结束运行
+    @return:
+    """
+    logger.info("MuRainBot即将关闭，正在删除缓存")
+
+    clean_cache()
+
+    logger.warning("MuRainBot结束运行！")
+    logger.info("再见！\n")
