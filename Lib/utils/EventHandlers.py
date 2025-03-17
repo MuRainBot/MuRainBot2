@@ -30,6 +30,30 @@ class Rule:
         pass
 
 
+class AnyRule(Rule):
+    """
+    输入n个rule，若匹配其中任意一个则返回True
+    """
+
+    def __init__(self, *rules: Rule):
+        self.rules = rules
+
+    def match(self, event_data: EventClassifier.Event):
+        return any(rule.match(event_data) for rule in self.rules)
+
+
+class AllRule(Rule):
+    """
+    输入n个rule，若匹配所有则返回True
+    """
+
+    def __init__(self, *rules: Rule):
+        self.rules = rules
+
+    def match(self, event_data: EventClassifier.Event):
+        return all(rule.match(event_data) for rule in self.rules)
+
+
 class KeyValueRule(Rule):
     """
     键值规则
