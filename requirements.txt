@@ -3,5 +3,4 @@ requests~=2.32.3
 PyYAML~=6.0.2
 Flask~=3.1.0
 Werkzeug~=3.1.3
-waitress~=3.0.2
 coredumpy~=0.4.0
