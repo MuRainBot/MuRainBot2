@@ -56,7 +56,7 @@ def print_loading(wait_str):
     """
     输出加载动画
     """
-    loading_string_list = [r"|/-\\", r"▁▂▃▄▅▆▇█▇▆▅▄▃▂", r"⠁⠈⠐⠠⢀⡀⠄⠂", r"←↖↑↗→↘↓↙"]
+    loading_string_list = [r"|/-\\", r"▁▂▃▄▅▆▇█▇▆▅▄▃▂", "\u2801\u2808\u2810\u2820\u2880\u2900\u2804\u2802", r"←↖↑↗→↘↓↙"]
     loading_string = random.choice(loading_string_list)
     i = 0
     while not is_done:
@@ -139,7 +139,7 @@ if __name__ == '__main__':
 
             ConfigManager.GlobalConfig().set("account", new_account)
         except Exception as e:
-            logger.warning(f"获取用户信息失败: {repr(e)}, 可能会导致严重的问题！")
+            logger.warning(f"获取用户信息失败, 可能会导致严重的问题: {repr(e)}")
 
     logger.info(f"欢迎使用: {ConfigManager.GlobalConfig().account.nick_name}"
                 f"({ConfigManager.GlobalConfig().account.user_id})")

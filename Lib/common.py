@@ -9,7 +9,6 @@ import traceback
 import uuid
 from collections import OrderedDict
 
-import coredumpy
 import requests
 
 from .constants import *
@@ -208,12 +207,19 @@ def save_exc_dump(description: str = None, path: str = None):
         path: 保存的路径，为空则自动根据错误生成
     """
     try:
+        import coredumpy
+    except ImportError:
+        logger.warning("coredumpy未安装，无法保存异常堆栈")
+        return
+
+    try:
         exc_type, exc_value, exc_traceback = sys.exc_info()
         if not exc_traceback:
             raise Exception("No traceback found")
 
         # 遍历 traceback 链表，找到最后一个 frame (异常最初发生的位置)
         current_tb = exc_traceback
+        frame = current_tb.tb_frame
         while current_tb:
             frame = current_tb.tb_frame
             current_tb = current_tb.tb_next
@@ -222,10 +228,14 @@ def save_exc_dump(description: str = None, path: str = None):
         while True:
             if i > 0:
                 path_ = os.path.join(DUMPS_PATH,
-                                     f"coredumpy_{time.strftime('%Y%m%d%H%M%S')}_{frame.f_code.co_name}_{i}.dump")
+                                     f"coredumpy_"
+                                     f"{time.strftime('%Y%m%d%H%M%S')}_"
+                                     f"{frame.f_code.co_name}_{i}.dump")
             else:
                 path_ = os.path.join(DUMPS_PATH,
-                                     f"coredumpy_{time.strftime('%Y%m%d%H%M%S')}_{frame.f_code.co_name}.dump")
+                                     f"coredumpy_"
+                                     f"{time.strftime('%Y%m%d%H%M%S')}_"
+                                     f"{frame.f_code.co_name}.dump")
             if not os.path.exists(path_):
                 break
             i += 1
