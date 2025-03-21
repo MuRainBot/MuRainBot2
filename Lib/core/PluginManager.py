@@ -149,10 +149,13 @@ class PluginInfo:
     HELP_MSG: str  # 插件帮助
     ENABLED: bool = True  # 插件是否启用
     IS_HIDDEN: bool = False  # 插件是否隐藏（在/help命令中）
+    extra: dict | None = None  # 一个字典，可以用于存储任意信息。其他插件可以通过约定 extra 字典的键名来达成收集某些特殊信息的目的。
 
     def __post_init__(self):
         if self.ENABLED is not True:
             raise NotEnabledPluginException
+        if self.extra is None:
+            self.extra = {}
 
 
 def requirement_plugin(plugin_name: str):
