@@ -4,15 +4,17 @@ account:  # 账号相关
   nick_name: ""  # 昵称（留空则自动获取）
   bot_admin: []
 
-api:  # Api设置
+api:  # Api设置(Onebot HTTP通信)
   host: '127.0.0.1'
   port: 5700
+  access_token: ""  # HTTP的Access Token，为空则不使用（详见https://github.com/botuniverse/onebot-11/blob/master/communication/authorization.md#http-%E5%92%8C%E6%AD%A3%E5%90%91-websocket）
 
-server:  # 监听服务器设置
+server:  # 监听服务器设置（Onebot HTTP POST通信）
   host: '127.0.0.1'
   port: 5701
   server: 'werkzeug'  # 使用的服务器（werkzeug或waitress，使用waitress需先pip install waitress）
   max_works: 4  # 最大工作线程数
+  secret: ""  # 上报数据签名密钥（详见https://github.com/botuniverse/onebot-11/blob/master/communication/http-post.md#%E7%AD%BE%E5%90%8D）
 
 thread_pool:  # 线程池相关
   max_workers: 10  # 线程池最大线程数

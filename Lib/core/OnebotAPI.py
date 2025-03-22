@@ -100,12 +100,16 @@ class OnebotAPI:
             logger.debug(f"调用 API: {node} data: {data} by: {traceback.extract_stack()[-3].filename}")
         else:
             logger.debug(f"调用 API: {node} data: {data} by: {traceback.extract_stack()[-2].filename}")
-
+        headers = {
+                    "Content-Type": "application/json"
+        }
+        if config.api.access_token:
+            headers["access_token"] = f"Bearer {config.api.access_token}"
         # 发起get请求
         try:
             response = requests.post(
                 url,
-                headers={"Content-Type": "application/json"},
+                headers=headers,
                 data=json.dumps(data if data is not None else {})
             )
             if response.status_code != 200 or (response.json()['status'] != 'ok' or response.json()['retcode'] != 0):
