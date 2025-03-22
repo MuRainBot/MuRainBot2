@@ -3,11 +3,11 @@ QQ富文本
 """
 import inspect
 import json
-import os
 import traceback
 from typing import Any
 from urllib.parse import urlparse
 
+from Lib.constants import *
 from Lib.common import save_exc_dump
 from Lib.core import ConfigManager
 from Lib.utils import QQDataCacher, Logger
@@ -154,7 +154,7 @@ def array_2_cq(cq_array: list | dict) -> str:
     return text
 
 
-def convert_to_fileurl(input_str):
+def convert_to_fileurl(input_str: str) -> str:
     """
     自动将输入的路径转换成fileurl
     Args:

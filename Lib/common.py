@@ -8,6 +8,7 @@ import time
 import traceback
 import uuid
 from collections import OrderedDict
+from io import BytesIO
 
 import requests
 
@@ -256,3 +257,34 @@ def save_exc_dump(description: str = None, path: str = None):
         return None
 
     return kwargs["path"]
+
+
+def bytes_io_to_file(
+        io_bytes: BytesIO,
+        file_name: str | None = None,
+        file_type: str | None = None,
+        save_dir: str = CACHE_PATH
+):
+    """
+    将BytesIO对象保存成文件，并返回路径
+    Args:
+        io_bytes: BytesIO对象
+        file_name: 要保存的文件名，与file_type选一个填即可
+        file_type: 文件类型(扩展名)，与file_name选一个填即可
+        save_dir: 保存的文件夹
+
+    Returns:
+        保存的文件路径
+    """
+    if not isinstance(io_bytes, BytesIO):
+        raise TypeError("bytes_io_to_file: 输入类型错误")
+    if file_name is None:
+        if file_type is None:
+            file_type = "cache"
+        file_name = uuid.uuid4().hex + "." + file_type
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    with open(os.path.join(save_dir, file_name), "wb") as f:
+        f.write(io_bytes.getvalue())
+    return os.path.join(save_dir, file_name)
