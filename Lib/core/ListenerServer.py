@@ -32,7 +32,11 @@ def post_data():
     """
     if GlobalConfig().server.secret:
         sig = hmac.new(GlobalConfig().server.secret.encode("utf-8"), request.get_data(), 'sha1').hexdigest()
-        received_sig = request.headers['X-Signature'][len('sha1='):]
+        try:
+            received_sig = request.headers['X-Signature'][len('sha1='):]
+        except KeyError:
+            logger.warning("收到非法请求(缺少签名)，拒绝访问")
+            return "", 401
         if sig != received_sig:
             logger.warning("收到非法请求(签名不匹配)，拒绝访问")
             return "", 401
