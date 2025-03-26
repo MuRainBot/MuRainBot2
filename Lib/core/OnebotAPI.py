@@ -15,6 +15,7 @@ import urllib.parse
 import requests
 
 from . import EventManager, ConfigManager
+from ..common import save_exc_dump
 from ..utils import Logger
 
 logger = Logger.get_logger()
@@ -99,12 +100,16 @@ class OnebotAPI:
             logger.debug(f"调用 API: {node} data: {data} by: {traceback.extract_stack()[-3].filename}")
         else:
             logger.debug(f"调用 API: {node} data: {data} by: {traceback.extract_stack()[-2].filename}")
-
+        headers = {
+                    "Content-Type": "application/json"
+        }
+        if config.api.access_token:
+            headers["Authorization"] = f"Bearer {config.api.access_token}"
         # 发起get请求
         try:
             response = requests.post(
                 url,
-                headers={"Content-Type": "application/json"},
+                headers=headers,
                 data=json.dumps(data if data is not None else {})
             )
             if response.status_code != 200 or (response.json()['status'] != 'ok' or response.json()['retcode'] != 0):
@@ -116,8 +121,15 @@ class OnebotAPI:
             else:
                 return response.json()['data']
         except Exception as e:
-            logger.error(f"调用 API: {node} data: {data} 异常: {repr(e)}\n"
-                         f"{traceback.format_exc()}")
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(f"调用 API: {node} data: {data} 异常")
+            else:
+                dump_path = None
+            logger.error(
+                f"调用 API: {node} data: {data} 异常: {repr(e)}\n"
+                f"{traceback.format_exc()}"
+                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}"
+            )
             raise e
 
     def send_private_msg(self, user_id: int, message: str | list[dict]):

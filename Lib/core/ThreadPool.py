@@ -6,8 +6,11 @@ Created by BigCookie233
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+
+from Lib.core import ConfigManager
 from Lib.core.ConfigManager import GlobalConfig
 from Lib.utils.Logger import get_logger
+from Lib.common import save_exc_dump
 
 import atexit
 
@@ -41,12 +44,15 @@ def _wrapper(func, *args, **kwargs):
     try:
         return func(*args, **kwargs)
     except Exception as e:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-
+        if ConfigManager.GlobalConfig().debug.save_dump:
+            dump_path = save_exc_dump(f"Error in async task({func.__module__}.{func.__name__})")
+        else:
+            dump_path = None
         # 打印到日志中
         logger.error(
             f"Error in async task({func.__module__}.{func.__name__}): {repr(e)}\n"
-            f"{"".join(traceback.format_exception(exc_type, exc_value, exc_traceback))}"
+            f"{"".join(traceback.format_exc())}"
+            f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}"
         )
 
 

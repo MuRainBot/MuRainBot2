@@ -4,6 +4,7 @@
 import copy
 import traceback
 
+from Lib.common import save_exc_dump
 from Lib.core import EventManager, ConfigManager
 from Lib.utils import EventClassifier, Logger, QQRichText
 
@@ -27,6 +28,30 @@ class Rule:
             是否匹配到事件
         """
         pass
+
+
+class AnyRule(Rule):
+    """
+    输入n个rule，若匹配其中任意一个则返回True
+    """
+
+    def __init__(self, *rules: Rule):
+        self.rules = rules
+
+    def match(self, event_data: EventClassifier.Event):
+        return any(rule.match(event_data) for rule in self.rules)
+
+
+class AllRule(Rule):
+    """
+    输入n个rule，若匹配所有则返回True
+    """
+
+    def __init__(self, *rules: Rule):
+        self.rules = rules
+
+    def match(self, event_data: EventClassifier.Event):
+        return all(rule.match(event_data) for rule in self.rules)
 
 
 class KeyValueRule(Rule):
@@ -65,8 +90,13 @@ class KeyValueRule(Rule):
                 case "func":
                     return self.func(event_data.get(self.key), self.value)
         except Exception as e:
-            logger.error(f"Error occurred while matching event {event_data}: {repr(e)}\n"
-                         f"{traceback.format_exc()}")
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(f"执行匹配事件器时出错 {event_data}")
+            else:
+                dump_path = None
+            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}\n"
+                         f"{traceback.format_exc()}"
+                         f"{f"已保存异常到 {dump_path}" if dump_path else ""}")
             return False
 
 
@@ -87,8 +117,15 @@ class FuncRule(Rule):
         try:
             return self.func(event_data)
         except Exception as e:
-            logger.error(f"Error occurred while matching event {event_data}: {repr(e)}\n"
-                         f"{traceback.format_exc()}")
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(f"执行匹配事件器时出错 {event_data}")
+            else:
+                dump_path = None
+
+            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}\n"
+                         f"{traceback.format_exc()}"
+                         f"{f"已保存异常到 {dump_path}" if dump_path else ""}"
+                         )
             return False
 
 
@@ -103,13 +140,21 @@ class CommandRule(Rule):
     会自动移除消息中的 @bot 和命令起始符，同时会自动将 别名 替换为 命令本身，以简化插件处理逻辑。
     """
 
-    def __init__(self, command: str, aliases: set[str] = None, command_start: list[str] = None, reply: bool = False):
+    def __init__(
+            self,
+            command: str,
+            aliases: set[str] = None,
+            command_start: list[str] = None,
+            reply: bool = False,
+            no_args: bool = False,
+    ):
         """
         Args:
             command: 命令
             aliases: 命令别名
             command_start: 命令起始符（不填写默认为配置文件中的command_start）
             reply: 是否可包含回复（默认否）
+            no_args: 是否不需要命令参数（即消息只能完全匹配命令，不包含其他的内容）
         """
         if aliases is None:
             aliases = set()
@@ -124,6 +169,7 @@ class CommandRule(Rule):
         self.aliases = aliases
         self.command_start = command_start
         self.reply = reply
+        self.no_args = no_args
 
     def match(self, event_data: EventClassifier.MessageEvent):
         # 检查是否是消息事件
@@ -173,30 +219,48 @@ class CommandRule(Rule):
         # 添加所有别名的命令前缀组合
         commands += [_ + alias for alias in self.aliases for _ in self.command_start]
 
-        # 检查消息是否以任何预设命令前缀开始
-        if any(string_message.startswith(_) for _ in commands):
-            # 移除命令前缀
-            for start in self.command_start:
-                if string_message.startswith(start):
-                    string_message = string_message[len(start):]
-                    break
-            # 替换别名为主命令
-            for alias in self.aliases:
-                if string_message.startswith(alias):
-                    string_message = self.command + string_message[len(alias):]
-                    break
+        if self.no_args:
+            # 检查消息是否以任何预设命令前缀开始
+            if any(string_message == _ for _ in commands):
+                # 移除命令前缀
+                for start in self.command_start:
+                    if string_message.startswith(start):
+                        string_message = string_message[len(start):]
+                        break
+                # 替换别名为主命令
+                for alias in self.aliases:
+                    if string_message == alias:
+                        string_message = self.command + string_message[len(alias):]
+                        break
+            else:
+                return False
 
-            # 更新消息对象
-            message = QQRichText.QQRichText(string_message)
+        else:
+            # 检查消息是否以任何预设命令前缀开始
+            if any(string_message.startswith(_) for _ in commands):
+                # 移除命令前缀
+                for start in self.command_start:
+                    if string_message.startswith(start):
+                        string_message = string_message[len(start):]
+                        break
+                # 替换别名为主命令
+                for alias in self.aliases:
+                    if string_message.startswith(alias):
+                        string_message = self.command + string_message[len(alias):]
+                        break
+            else:
+                return False
 
-            # 将回复消息段添加到消息段列表中(如果有)
-            if reply_segment is not None:
-                message.rich_array.insert(0, reply_segment)
+        # 更新消息对象
+        message = QQRichText.QQRichText(string_message)
 
-            event_data.message = message
-            event_data.raw_message = string_message
-            return True
-        return False
+        # 将回复消息段添加到消息段列表中(如果有)
+        if reply_segment is not None:
+            message.rich_array.insert(0, reply_segment)
+
+        event_data.message = message
+        event_data.raw_message = string_message
+        return True
 
 
 def _to_me(event_data: EventClassifier.MessageEvent):
@@ -262,8 +326,15 @@ class Matcher:
                         logger.debug(f"处理器 {handler.__name__} 阻断了事件 {event_data} 的传播")
                         return
             except Exception as e:
-                logger.error(f"Error occurred while matching event {event_data}: {repr(e)}\n"
-                             f"{traceback.format_exc()}")
+                if ConfigManager.GlobalConfig().debug.save_dump:
+                    dump_path = save_exc_dump(f"执行匹配事件或执行处理器时出错 {event_data}")
+                else:
+                    dump_path = None
+                logger.error(
+                    f"执行匹配事件或执行处理器时出错 {event_data}: {repr(e)}\n"
+                    f"{traceback.format_exc()}"
+                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}"
+                )
 
 
 events_matchers: dict[str, dict[Type[EventClassifier.Event], list[tuple[int, list[Rule], Matcher]]]] = {}

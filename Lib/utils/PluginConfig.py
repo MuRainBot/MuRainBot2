@@ -28,7 +28,7 @@ class PluginConfig(ConfigManager.ConfigManager):
             while stack:
                 frame, filename, line_number, function_name, lines, index = stack.pop(0)
                 if filename.startswith(PLUGINS_PATH):
-                    for plugin in PluginManager.plugins:
+                    for plugin in PluginManager.found_plugins:
                         head, tail = os.path.split(plugin["file_path"])
                         if head == PLUGINS_PATH:
                             # 是文件类型的插件

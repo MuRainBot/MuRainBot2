@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from wsgiref.simple_server import WSGIServer
 
 from flask import Flask, request
+import hmac
 
 logger = Logger.get_logger()
 app = Flask(__name__)
@@ -29,6 +30,16 @@ def post_data():
     """
     上报处理
     """
+    if GlobalConfig().server.secret:
+        sig = hmac.new(GlobalConfig().server.secret.encode("utf-8"), request.get_data(), 'sha1').hexdigest()
+        try:
+            received_sig = request.headers['X-Signature'][len('sha1='):]
+        except KeyError:
+            logger.warning("收到非法请求(缺少签名)，拒绝访问")
+            return "", 401
+        if sig != received_sig:
+            logger.warning("收到非法请求(签名不匹配)，拒绝访问")
+            return "", 401
     data = request.get_json()
     logger.debug("收到上报: %s" % data)
     if "self" in data and GlobalConfig().account.user_id != 0 and data.get("self") != GlobalConfig().account.user_id:
@@ -83,8 +94,8 @@ if config.server.server == "werkzeug":
 
 
     server = ThreadPoolWSGIServer((config.server.host, config.server.port),
-                                   app=app,
-                                   max_workers=config.server.max_works)
+                                  app=app,
+                                  max_workers=config.server.max_works)
     server.RequestHandlerClass = ThreadPoolWSGIRequestHandler
     start_server = lambda: server.serve_forever()
 elif config.server.server == "waitress":

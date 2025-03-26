@@ -5,8 +5,10 @@
 import shutil
 import sys
 import time
+import traceback
 import uuid
 from collections import OrderedDict
+from io import BytesIO
 
 import requests
 
@@ -20,6 +22,7 @@ class LimitedSizeDict(OrderedDict):
     """
     带有限制大小的字典
     """
+
     def __init__(self, max_size):
         self._max_size = max_size
         super().__init__()
@@ -155,6 +158,7 @@ def function_cache(max_size: int, expiration_time: int = -1):
         Returns:
             None
         """
+
         def wrapper(*args, **kwargs):
             key = str(func.__name__) + str(args) + str(kwargs)
             if key in cache and (expiration_time == -1 or time.time() - cache[key][1] < expiration_time):
@@ -181,3 +185,106 @@ def function_cache(max_size: int, expiration_time: int = -1):
         return wrapper
 
     return cache_decorator
+
+
+def finalize_and_cleanup():
+    """
+    结束运行
+    @return:
+    """
+    logger.info("MuRainBot即将关闭，正在删除缓存")
+
+    clean_cache()
+
+    logger.warning("MuRainBot结束运行！")
+    logger.info("再见！\n")
+
+
+def save_exc_dump(description: str = None, path: str = None):
+    """
+    保存异常堆栈
+    Args:
+        description: 保存的dump描述，为空则默认
+        path: 保存的路径，为空则自动根据错误生成
+    """
+    try:
+        import coredumpy
+    except ImportError:
+        logger.warning("coredumpy未安装，无法保存异常堆栈")
+        return
+
+    try:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        if not exc_traceback:
+            raise Exception("No traceback found")
+
+        # 遍历 traceback 链表，找到最后一个 frame (异常最初发生的位置)
+        current_tb = exc_traceback
+        frame = current_tb.tb_frame
+        while current_tb:
+            frame = current_tb.tb_frame
+            current_tb = current_tb.tb_next
+
+        i = 0
+        while True:
+            if i > 0:
+                path_ = os.path.join(DUMPS_PATH,
+                                     f"coredumpy_"
+                                     f"{time.strftime('%Y%m%d%H%M%S')}_"
+                                     f"{frame.f_code.co_name}_{i}.dump")
+            else:
+                path_ = os.path.join(DUMPS_PATH,
+                                     f"coredumpy_"
+                                     f"{time.strftime('%Y%m%d%H%M%S')}_"
+                                     f"{frame.f_code.co_name}.dump")
+            if not os.path.exists(path_):
+                break
+            i += 1
+
+        kwargs = {
+            "frame": frame,
+            "path": path_
+        }
+        if description:
+            kwargs["description"] = description
+        if path:
+            kwargs["path"] = path
+
+        coredumpy.dump(**kwargs)
+    except Exception as e:
+        logger.error(f"保存异常堆栈时发生错误: {repr(e)}\n"
+                     f"{traceback.format_exc()}")
+        return None
+
+    return kwargs["path"]
+
+
+def bytes_io_to_file(
+        io_bytes: BytesIO,
+        file_name: str | None = None,
+        file_type: str | None = None,
+        save_dir: str = CACHE_PATH
+):
+    """
+    将BytesIO对象保存成文件，并返回路径
+    Args:
+        io_bytes: BytesIO对象
+        file_name: 要保存的文件名，与file_type选一个填即可
+        file_type: 文件类型(扩展名)，与file_name选一个填即可
+        save_dir: 保存的文件夹
+
+    Returns:
+        保存的文件路径
+    """
+    if not isinstance(io_bytes, BytesIO):
+        raise TypeError("bytes_io_to_file: 输入类型错误")
+    if file_name is None:
+        if file_type is None:
+            file_type = "cache"
+        file_name = uuid.uuid4().hex + "." + file_type
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    with open(os.path.join(save_dir, file_name), "wb") as f:
+        f.write(io_bytes.getvalue())
+    return os.path.join(save_dir, file_name)

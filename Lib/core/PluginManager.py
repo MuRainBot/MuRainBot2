@@ -7,7 +7,9 @@ import importlib
 import sys
 import traceback
 
+from Lib.common import save_exc_dump
 from Lib.constants import *
+from Lib.core import ConfigManager
 from Lib.core.EventManager import event_listener
 from Lib.core.ListenerServer import EscalationEvent
 from Lib.utils.Logger import get_logger
@@ -15,6 +17,7 @@ from Lib.utils.Logger import get_logger
 logger = get_logger()
 
 plugins: list[dict] = []
+found_plugins: list[dict] = []
 has_main_func_plugins: list[dict] = []
 
 if not os.path.exists(PLUGINS_PATH):
@@ -74,8 +77,9 @@ def load_plugins():
     """
     加载插件
     """
-    global plugins
-    plugins = []
+    global plugins, found_plugins
+
+    found_plugins = []
     # 获取插件目录下的所有文件
     for plugin in os.listdir(PLUGINS_PATH):
         if plugin == "__pycache__":
@@ -96,11 +100,12 @@ def load_plugins():
             continue
         logger.debug(f"找到插件 {file_path} 待加载")
         plugin = {"name": name, "plugin": None, "info": None, "file_path": file_path, "path": full_path}
-        plugins.append(plugin)
+        found_plugins.append(plugin)
 
-    for plugin in plugins:
+    plugins = []
+
+    for plugin in found_plugins:
         name = plugin["name"]
-        file_path = plugin["file_path"]
         full_path = plugin["path"]
 
         if plugin["plugin"] is not None:
@@ -108,24 +113,28 @@ def load_plugins():
             logger.debug(f"插件 {name} 已被加载，跳过加载")
             continue
 
-        logger.debug(f"开始尝试加载插件 {file_path}")
+        logger.debug(f"开始尝试加载插件 {full_path}")
 
         try:
             module, plugin_info = load_plugin(plugin)
 
             plugin["info"] = plugin_info
             plugin["plugin"] = module
-            logger.debug(f"插件 {name}({file_path}) 加载成功！")
+            plugins.append(plugin)
         except NotEnabledPluginException:
             logger.warning(f"插件 {name}({full_path}) 已被禁用，将不会被加载")
-            plugins.remove(plugin)
+            continue
+        except Exception as e:
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(f"尝试加载插件 {full_path} 时失败")
+            else:
+                dump_path = None
+            logger.error(f"尝试加载插件 {full_path} 时失败！ 原因:{repr(e)}\n"
+                         f"{"".join(traceback.format_exc())}"
+                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
             continue
 
-        except Exception as e:
-            logger.error(f"尝试加载插件 {full_path} 时失败！ 原因:{repr(e)}\n"
-                         f"{"".join(traceback.format_exc())}")
-
-            plugins.remove(plugin)
+        logger.debug(f"插件 {name}({full_path}) 加载成功！")
 
 
 @dataclasses.dataclass
@@ -140,10 +149,13 @@ class PluginInfo:
     HELP_MSG: str  # 插件帮助
     ENABLED: bool = True  # 插件是否启用
     IS_HIDDEN: bool = False  # 插件是否隐藏（在/help命令中）
+    extra: dict | None = None  # 一个字典，可以用于存储任意信息。其他插件可以通过约定 extra 字典的键名来达成收集某些特殊信息的目的。
 
     def __post_init__(self):
         if self.ENABLED is not True:
             raise NotEnabledPluginException
+        if self.extra is None:
+            self.extra = {}
 
 
 def requirement_plugin(plugin_name: str):
@@ -156,26 +168,32 @@ def requirement_plugin(plugin_name: str):
         依赖的插件的信息
     """
     logger.debug(f"由于插件依赖，正在尝试加载插件 {plugin_name}")
-    for plugin in plugins:
+    for plugin in found_plugins:
         if plugin["name"] == plugin_name:
-            if plugin["plugin"] is None:
+            if plugin not in plugins:
                 try:
                     module, plugin_info = load_plugin(plugin)
                     plugin["info"] = plugin_info
                     plugin["plugin"] = module
+                    plugins.append(plugin)
                 except NotEnabledPluginException:
                     logger.error(f"被依赖的插件 {plugin_name} 已被禁用，无法加载依赖")
                     raise Exception(f"被依赖的插件 {plugin_name} 已被禁用，无法加载依赖")
                 except Exception as e:
-                    logger.error(f"尝试加载插件 {plugin_name} 时失败！ 原因:{repr(e)}\n"
-                                  f"{"".join(traceback.format_exc())}")
+                    if ConfigManager.GlobalConfig().debug.save_dump:
+                        dump_path = save_exc_dump(f"尝试加载被依赖的插件 {plugin_name} 时失败！")
+                    else:
+                        dump_path = None
+                    logger.error(f"尝试加载被依赖的插件 {plugin_name} 时失败！ 原因:{repr(e)}\n"
+                                 f"{"".join(traceback.format_exc())}"
+                                 f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
                     raise e
                 logger.debug(f"由于插件依赖，插件 {plugin_name} 加载成功！")
             else:
                 logger.debug(f"由于插件依赖，插件 {plugin_name} 已被加载，跳过加载")
             return plugin
     else:
-        raise FileNotFoundError(f"插件 {plugin_name} 不存在")
+        raise FileNotFoundError(f"插件 {plugin_name} 不存在或不符合要求，无法加载依赖")
 
 
 # 该方法已被弃用

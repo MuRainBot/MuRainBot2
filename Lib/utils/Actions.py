@@ -4,7 +4,8 @@
 
 import traceback
 
-from Lib.core import OnebotAPI, ThreadPool
+from Lib.common import save_exc_dump
+from Lib.core import OnebotAPI, ThreadPool, ConfigManager
 from Lib.utils import QQRichText, Logger, QQDataCacher
 
 logger = Logger.get_logger()
@@ -105,8 +106,13 @@ class Action:
             try:
                 self.callback(self._result)
             except Exception as e:
-                logger.warning(f"回调函数异常: {repr(e)}\n"
-                               f"{traceback.format_exc()}")
+                if ConfigManager.GlobalConfig().debug.save_dump:
+                    dump_path = save_exc_dump(f"执行回调函数异常")
+                else:
+                    dump_path = None
+                logger.warning(f"执行回调函数异常: {repr(e)}\n"
+                               f"{traceback.format_exc()}"
+                               f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
         return self
 
     def call(self):
@@ -124,14 +130,24 @@ class Action:
             if self._result.is_ok:
                 self.logger(result.unwrap(), *self.args, **self.kwargs)
         except Exception as e:
-            logger.warning(f"记录log异常: {repr(e)}\n"
-                           f"{traceback.format_exc()}")
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(f"调用日志记录函数异常")
+            else:
+                dump_path = None
+            logger.warning(f"调用日志记录函数异常: {repr(e)}\n"
+                           f"{traceback.format_exc()}"
+                           f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
         if self.callback is not None:
             try:
                 self.callback(self._result)
             except Exception as e:
+                if ConfigManager.GlobalConfig().debug.save_dump:
+                    dump_path = save_exc_dump(f"执行回调函数异常")
+                else:
+                    dump_path = None
                 logger.warning(f"回调函数异常: {repr(e)}\n"
-                               f"{traceback.format_exc()}")
+                               f"{traceback.format_exc()}"
+                               f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
         return self
 
     def logger(self, *args, **kwargs):
@@ -699,7 +715,8 @@ class GetGroupMemberInfo(Action):
 
     def logger(self, result, group_id: int, user_id: int, no_cache: bool):
         logger.debug(
-            f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) 信息")
+            f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 成员 "
+            f"{cacher.get_user_info(user_id).get_nickname()}({user_id}) 信息")
 
 
 class GetGroupMemberList(Action):

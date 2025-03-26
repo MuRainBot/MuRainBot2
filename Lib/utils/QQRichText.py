@@ -3,12 +3,13 @@ QQ富文本
 """
 import inspect
 import json
-import os
-import re
 import traceback
 from typing import Any
 from urllib.parse import urlparse
 
+from Lib.constants import *
+from Lib.common import save_exc_dump
+from Lib.core import ConfigManager
 from Lib.utils import QQDataCacher, Logger
 
 
@@ -153,7 +154,7 @@ def array_2_cq(cq_array: list | dict) -> str:
     return text
 
 
-def convert_to_fileurl(input_str):
+def convert_to_fileurl(input_str: str) -> str:
     """
     自动将输入的路径转换成fileurl
     Args:
@@ -386,6 +387,8 @@ class At(Segment):
 
     def render(self, group_id: int | None = None):
         if group_id:
+            if str(self.qq) == "all" or str(self.qq) == "0":
+                return f"@全体成员"
             return f"@{QQDataCacher.qq_data_cache.get_group_member_info(group_id, self.qq).get_nickname()}: {self.qq}"
         else:
             return f"@{QQDataCacher.qq_data_cache.get_user_info(self.qq).nickname}: {self.qq}"
@@ -1059,42 +1062,47 @@ class QQRichText:
                     raise TypeError("QQRichText: 输入类型错误")
 
         # 将rich转换为的Segment
-        for _ in range(len(rich)):
-            if rich[_]["type"] in segments_map:
+        for i in range(len(rich)):
+            if rich[i]["type"] in segments_map:
                 try:
-                    params = inspect.signature(segments_map[rich[_]["type"]]).parameters
+                    params = inspect.signature(segments_map[rich[i]["type"]]).parameters
                     kwargs = {}
                     for param in params:
-                        if param in rich[_]["data"]:
-                            kwargs[param] = rich[_]["data"][param]
+                        if param in rich[i]["data"]:
+                            kwargs[param] = rich[i]["data"][param]
                         else:
-                            if rich[_]["type"] == "reply" and param == "message_id":
-                                kwargs[param] = rich[_]["data"].get("id")
-                            elif rich[_]["type"] == "face" and param == "face_id":
-                                kwargs[param] = rich[_]["data"].get("id")
-                            elif rich[_]["type"] == "forward" and param == "forward_id":
-                                kwargs[param] = rich[_]["data"].get("id")
-                            elif rich[_]["type"] == "poke" and param == "poke_id":
-                                kwargs[param] = rich[_]["data"].get("id")
+                            if rich[i]["type"] == "reply" and param == "message_id":
+                                kwargs[param] = rich[i]["data"].get("id")
+                            elif rich[i]["type"] == "face" and param == "face_id":
+                                kwargs[param] = rich[i]["data"].get("id")
+                            elif rich[i]["type"] == "forward" and param == "forward_id":
+                                kwargs[param] = rich[i]["data"].get("id")
+                            elif rich[i]["type"] == "poke" and param == "poke_id":
+                                kwargs[param] = rich[i]["data"].get("id")
                             elif param == "id_":
-                                kwargs[param] = rich[_]["data"].get("id")
+                                kwargs[param] = rich[i]["data"].get("id")
                             elif param == "type_":
-                                kwargs[param] = rich[_]["data"].get("type")
+                                kwargs[param] = rich[i]["data"].get("type")
                             else:
                                 if params[param].default != params[param].empty:
                                     kwargs[param] = params[param].default
-                    segment = segments_map[rich[_]["type"]](**kwargs)
+                    segment = segments_map[rich[i]["type"]](**kwargs)
                     # 检查原cq中是否含有不在segment的data中的参数
-                    for k, v in rich[_]["data"].items():
+                    for k, v in rich[i]["data"].items():
                         if k not in segment["data"]:
                             segment.set_data(k, v)
-                    rich[_] = segment
+                    rich[i] = segment
                 except Exception as e:
-                    Logger.get_logger().warning(f"转换{rich[_]}时失败，报错信息: {repr(e)}\n"
-                                                f"{traceback.format_exc()}")
-                    rich[_] = Segment(rich[_])
+                    if ConfigManager.GlobalConfig().debug.save_dump:
+                        dump_path = save_exc_dump(f"转换{rich[i]}时失败")
+                    else:
+                        dump_path = None
+                    Logger.get_logger().warning(f"转换{rich[i]}时失败，报错信息: {repr(e)}\n"
+                                                f"{traceback.format_exc()}"
+                                                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
+                    rich[i] = Segment(rich[i])
             else:
-                rich[_] = Segment(rich[_])
+                rich[i] = Segment(rich[i])
 
         self.rich_array: list[Segment] = rich
 
