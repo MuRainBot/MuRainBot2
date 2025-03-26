@@ -104,7 +104,7 @@ class OnebotAPI:
                     "Content-Type": "application/json"
         }
         if config.api.access_token:
-            headers["access_token"] = f"Bearer {config.api.access_token}"
+            headers["Authorization"] = f"Bearer {config.api.access_token}"
         # 发起get请求
         try:
             response = requests.post(
