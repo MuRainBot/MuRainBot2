@@ -3,8 +3,7 @@ Lagrange的一些拓展事件
 """
 from typing import TypedDict
 
-from Lib.utils import EventClassifier, Logger
-from Lib.utils.QQDataCacher import qq_data_cache
+from Lib.utils import EventClassifier, Logger, QQDataCacher
 
 logger = Logger.get_logger()
 
@@ -56,13 +55,13 @@ class GroupEssenceEvent(EventClassifier.NoticeEvent):
 class GroupAddEssenceEvent(GroupEssenceEvent):
     def logger(self):
         logger.info(
-            f"群 {qq_data_cache.get_group_info(self.group_id).group_name}"
+            f"群 {QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data_cache.get_group_member_info(self.group_id, self.sender_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.sender_id).get_nickname()}"
             f"({self.sender_id}) "
             f"的消息 {self.message_id} 被 "
-            f"{qq_data_cache.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
             f"设置为精华消息"
         )
@@ -72,13 +71,13 @@ class GroupAddEssenceEvent(GroupEssenceEvent):
 class GroupDeleteEssenceEvent(GroupEssenceEvent):
     def logger(self):
         logger.info(
-            f"群 {qq_data_cache.get_group_info(self.group_id).group_name}"
+            f"群 {QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data_cache.get_group_member_info(self.group_id, self.sender_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.sender_id).get_nickname()}"
             f"({self.sender_id}) "
             f"的消息 {self.message_id} 被 "
-            f"{qq_data_cache.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
             f"取消了精华消息"
         )
@@ -100,10 +99,10 @@ class GroupReactionEvent(EventClassifier.NoticeEvent):
 class GroupAddReactionEvent(GroupReactionEvent):
     def logger(self):
         logger.info(
-            f"群 {qq_data_cache.get_group_info(self.group_id).group_name}"
+            f"群 {QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data_cache.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
             f"给消息 {self.message_id} 添加了表情 {self.code} (共计{self.count}个)"
         )
@@ -113,10 +112,10 @@ class GroupAddReactionEvent(GroupReactionEvent):
 class GroupDeleteReactionEvent(GroupReactionEvent):
     def logger(self):
         logger.info(
-            f"群 {qq_data_cache.get_group_info(self.group_id).group_name}"
+            f"群 {QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data_cache.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
             f"给消息 {self.message_id} 删除了表情 {self.code} (还有{self.count}个)"
         )
@@ -147,7 +146,7 @@ class PrivateFileEvent(EventClassifier.NoticeEvent):
     def logger(self):
         logger.info(
             f"用户 "
-            f"{qq_data_cache.get_user_info(self.user_id).get_nickname()} "
+            f"{QQDataCacher.get_user_info(self.user_id).get_nickname()} "
             f"({self.user_id}) "
             f"上传了文件: "
             f"{self.file['name']}"

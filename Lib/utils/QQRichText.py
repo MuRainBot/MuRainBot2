@@ -389,9 +389,9 @@ class At(Segment):
         if group_id:
             if str(self.qq) == "all" or str(self.qq) == "0":
                 return f"@全体成员"
-            return f"@{QQDataCacher.qq_data_cache.get_group_member_info(group_id, self.qq).get_nickname()}: {self.qq}"
+            return f"@{QQDataCacher.get_group_member_info(group_id, self.qq).get_nickname()}: {self.qq}"
         else:
-            return f"@{QQDataCacher.qq_data_cache.get_user_info(self.qq).nickname}: {self.qq}"
+            return f"@{QQDataCacher.get_user_info(self.qq).nickname}: {self.qq}"
 
 
 class Image(Segment):

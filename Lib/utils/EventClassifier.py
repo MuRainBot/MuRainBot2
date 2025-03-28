@@ -7,7 +7,6 @@ from typing import TypedDict, NotRequired, Literal
 from ..core import EventManager, ListenerServer
 from . import QQRichText, QQDataCacher, Logger
 
-qq_data = QQDataCacher.qq_data_cache
 logger = Logger.get_logger()
 
 
@@ -157,7 +156,7 @@ class PrivateMessageEvent(MessageEvent):
         if self.sub_type == "friend":
             logger.info(
                 f"收到来自好友 "
-                f"{qq_data.get_user_info(
+                f"{QQDataCacher.get_user_info(
                     self.user_id,
                     is_friend=True,
                     **{k: v for k, v in self.sender.items() if k not in ['user_id']}
@@ -171,10 +170,10 @@ class PrivateMessageEvent(MessageEvent):
         elif self.sub_type == "group":
             logger.info(
                 f"收到来自群 "
-                f"{qq_data.get_group_info(self.get('group_id')).group_name}"
+                f"{QQDataCacher.get_group_info(self.get('group_id')).group_name}"
                 f"({self.get('group_id')})"
                 f" 内成员 "
-                f"{qq_data.get_group_member_info(
+                f"{QQDataCacher.get_group_member_info(
                     self.get('group_id'), self.user_id,
                     **{k: v for k, v in self.sender.items() if k not in ['group_id', 'user_id']}
                 ).get_nickname()}"
@@ -187,7 +186,7 @@ class PrivateMessageEvent(MessageEvent):
         elif self.sub_type == "other":
             logger.info(
                 f"收到来自 "
-                f"{qq_data.get_user_info(
+                f"{QQDataCacher.get_user_info(
                     self.user_id,
                     **{k: v for k, v in self.sender.items() if k not in ['user_id']}
                 ).nickname}"
@@ -216,10 +215,10 @@ class GroupMessageEvent(MessageEvent):
         if self.sub_type == "normal":
             logger.info(
                 f"收到来自群 "
-                f"{qq_data.get_group_info(self.group_id).group_name}"
+                f"{QQDataCacher.get_group_info(self.group_id).group_name}"
                 f"({self.group_id})"
                 f" 内成员 "
-                f"{qq_data.get_group_member_info(
+                f"{QQDataCacher.get_group_member_info(
                     self.group_id, self.user_id,
                     **{k: v for k, v in self.sender.items()
                        if k not in ['group_id', 'user_id']}).get_nickname()}"
@@ -231,11 +230,12 @@ class GroupMessageEvent(MessageEvent):
 
         elif self.sub_type == "anonymous":
             anonymous_data = self.get('anonymous', {})
-            anonymous_str = f"{qq_data.get_user_info(anonymous_data).get('name')}" if anonymous_data else "匿名用户"
+            anonymous_str = f"{QQDataCacher.get_user_info(anonymous_data['id']).nickname}"\
+                if anonymous_data else "匿名用户"
             anonymous_detail = f"({anonymous_data['id']}; flag: {anonymous_data['flag']})" if anonymous_data else ""
             logger.info(
                 f"收到来自群 "
-                f"{qq_data.get_group_info(self.group_id).group_name}"
+                f"{QQDataCacher.get_group_info(self.group_id).group_name}"
                 f"({self.group_id})"
                 f" 内 {anonymous_str}{anonymous_detail} "
                 f"的匿名消息: "
@@ -246,7 +246,7 @@ class GroupMessageEvent(MessageEvent):
         elif self.sub_type == "notice":
             logger.info(
                 f"收到来自群 "
-                f"{qq_data.get_group_info(self.group_id).group_name}"
+                f"{QQDataCacher.get_group_info(self.group_id).group_name}"
                 f"({self.group_id}) "
                 f"内的系统消息: "
                 f"{self.message.render(group_id=self.group_id)}"
@@ -293,10 +293,10 @@ class GroupUploadEvent(NoticeEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内成员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()} "
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()} "
             f"({self.user_id}) "
             f"上传了文件: "
             f"{self.file['name']}"
@@ -326,10 +326,10 @@ class GroupSetAdminEvent(GroupAdminEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 成员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"被设置为管理员"
         )
@@ -344,10 +344,10 @@ class GroupUnsetAdminEvent(GroupAdminEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 成员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"被取消管理员"
         )
@@ -376,10 +376,10 @@ class GroupDecreaseLeaveEvent(GroupDecreaseEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内成员 "
-            f"{qq_data.get_user_info(self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_user_info(self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"退出了群聊"
         )
@@ -394,13 +394,13 @@ class GroupDecreaseKickEvent(GroupDecreaseEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内成员 "
-            f"{qq_data.get_user_info(self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_user_info(self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"被管理员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
             f"踢出了群聊"
         )
@@ -415,10 +415,10 @@ class GroupDecreaseKickMeEvent(GroupDecreaseEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
             f"将机器人踢出了群聊"
         )
@@ -447,13 +447,13 @@ class GroupIncreaseApproveEvent(GroupIncreaseEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内管理员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
             f"将 "
-            f"{qq_data.get_user_info(self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_user_info(self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"批准入群"
         )
@@ -468,13 +468,13 @@ class GroupIncreaseInviteEvent(GroupIncreaseEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内成员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.user_id}) "
             f"将 "
-            f"{qq_data.get_user_info(self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_user_info(self.user_id).get_nickname()}"
             f"({self.operator_id}) "
             f"邀请入群"
         )
@@ -504,13 +504,13 @@ class GroupBanSetEvent(GroupBanEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内成员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"被管理员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
             f"禁言了: "
             f"{self.duration}s"
@@ -526,13 +526,13 @@ class GroupBanLiftEvent(GroupBanEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内成员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"被管理员 "
-            f"{qq_data.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
             f"解除了禁言"
         )
@@ -551,7 +551,7 @@ class FriendAddEvent(NoticeEvent):
     def logger(self):
         logger.info(
             f"好友 "
-            f"{qq_data.get_user_info(self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_user_info(self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"添加了机器人的好友"
         )
@@ -574,10 +574,10 @@ class GroupRecallEvent(NoticeEvent):
         if self.user_id == self.operator_id:
             logger.info(
                 f"群 "
-                f"{qq_data.get_group_info(self.group_id).group_name}"
+                f"{QQDataCacher.get_group_info(self.group_id).group_name}"
                 f"({self.group_id}) "
                 f"内成员 "
-                f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+                f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
                 f"({self.user_id}) "
                 f"撤回了消息: "
                 f"{self.message_id}"
@@ -585,13 +585,13 @@ class GroupRecallEvent(NoticeEvent):
         else:
             logger.info(
                 f"群 "
-                f"{qq_data.get_group_info(self.group_id).group_name}"
+                f"{QQDataCacher.get_group_info(self.group_id).group_name}"
                 f"({self.group_id}) "
                 f"内成员 "
-                f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+                f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
                 f"({self.user_id}) "
                 f"被管理员 "
-                f"{qq_data.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
+                f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
                 f"({self.operator_id}) "
                 f"撤回了消息: "
                 f"{self.message_id}"
@@ -612,7 +612,7 @@ class FriendRecallEvent(NoticeEvent):
     def logger(self):
         logger.info(
             f"好友 "
-            f"{qq_data.get_user_info(self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_user_info(self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"撤回了消息: "
             f"{self.message_id}"
@@ -634,13 +634,13 @@ class GroupPokeEvent(NoticeEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"  # user_id is the poker
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"  # user_id is the poker
             f"({self.user_id}) "
             f"戳了戳 "
-            f"{qq_data.get_group_member_info(self.group_id, self.target_id).get_nickname()}"  # target_id is pokered
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.target_id).get_nickname()}"  # target_id is pokered
             f"({self.target_id})"
         )
 
@@ -660,13 +660,13 @@ class GroupLuckyKingEvent(NoticeEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"  # user_id is lucky king
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"  # user_id is lucky king
             f"({self.user_id}) "
             f"成为了 "
-            f"{qq_data.get_group_member_info(self.group_id, self.target_id).get_nickname()}"  # target_id is sender
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.target_id).get_nickname()}"  # target_id is sender
             f"({self.target_id}) "
             f"发送的红包的运气王"
         )
@@ -688,10 +688,10 @@ class GroupHonorEvent(NoticeEvent):
         if self.honor_type not in ["talkative", "performer", "emotion"]:
             logger.info(
                 f"群 "
-                f"{qq_data.get_group_info(self.group_id).group_name}"
+                f"{QQDataCacher.get_group_info(self.group_id).group_name}"
                 f"({self.group_id}) "
                 f"内 "
-                f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+                f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
                 f"({self.user_id}) "
                 f"获得了未知荣誉: "
                 f"{self.honor_type}"
@@ -709,10 +709,10 @@ class GroupTalkativeHonorEvent(GroupHonorEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"获得了群龙王称号"
         )
@@ -727,10 +727,10 @@ class GroupPerformerHonorEvent(GroupHonorEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"获得了群聊炽焰称号"
         )
@@ -745,10 +745,10 @@ class GroupEmotionHonorEvent(GroupHonorEvent):
     def logger(self):
         logger.info(
             f"群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
             f"内 "
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
             f"({self.user_id}) "
             f"获得了快乐源泉称号"
         )
@@ -779,7 +779,7 @@ class FriendRequestEvent(RequestEvent):
 
     def logger(self):
         logger.info(
-            f"{qq_data.get_user_info(self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_user_info(self.user_id).get_nickname()}"
             f"({self.user_id})"
             f"请求添加机器人为好友\n"
             f"验证信息: {self.comment}\n"
@@ -808,10 +808,10 @@ class GroupAddRequestEvent(GroupRequestEvent):
 
     def logger(self):
         logger.info(
-            f"{qq_data.get_user_info(self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_user_info(self.user_id).get_nickname()}"
             f"({self.user_id})"
             f"请求加入群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id})\n"
             f"验证信息: {self.comment}\n"
             f"flag: {self.flag}"
@@ -826,10 +826,10 @@ class GroupInviteRequestEvent(GroupRequestEvent):
 
     def logger(self):
         logger.info(
-            f"{qq_data.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
+            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
             f"({self.user_id})"
             f"邀请机器人加入群 "
-            f"{qq_data.get_group_info(self.group_id).group_name}"
+            f"{QQDataCacher.get_group_info(self.group_id).group_name}"
         )
 
 
