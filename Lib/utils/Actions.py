@@ -13,7 +13,6 @@ logger = Logger.get_logger()
 from typing import Generic, TypeVar, Union, Callable
 
 api = OnebotAPI.OnebotAPI()
-cacher = QQDataCacher.qq_data_cache
 
 T = TypeVar("T")  # 成功类型
 E = TypeVar("E")  # 错误类型
@@ -228,7 +227,7 @@ class SendPrivateMsg(Action):
         super().__init__(user_id=user_id, message=message, callback=callback)
 
     def logger(self, result, user_id: int, message: str | list[dict] | QQRichText.QQRichText):
-        logger.info(f"向 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+        logger.info(f"向 {QQDataCacher.get_user_info(user_id).get_nickname()}({user_id}) "
                     f"发送消息 {message}({result['message_id']})")
 
 
@@ -252,7 +251,7 @@ class SendGroupMsg(Action):
         super().__init__(group_id=group_id, message=message, callback=callback)
 
     def logger(self, result, group_id: int, message: str | list[dict] | QQRichText.QQRichText):
-        logger.info(f"向群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+        logger.info(f"向群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
                     f"发送消息 {QQRichText.QQRichText(message)}({result['message_id']})")
 
 
@@ -284,10 +283,10 @@ class SendMsg(Action):
 
     def logger(self, result, user_id: int, group_id: int, message: str | list[dict] | QQRichText.QQRichText):
         if user_id != -1:
-            logger.info(f"向 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+            logger.info(f"向 {QQDataCacher.get_user_info(user_id).get_nickname()}({user_id}) "
                         f"发送消息 {QQRichText.QQRichText(message)}({result['message_id']})")
         else:
-            logger.info(f"向群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+            logger.info(f"向群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
                         f"发送消息 {QQRichText.QQRichText(message)}({result['message_id']})")
 
 
@@ -387,8 +386,8 @@ class SetGroupKick(Action):
         super().__init__(group_id=group_id, user_id=user_id, reject_add_request=reject_add_request, callback=callback)
 
     def logger(self, result, group_id: int, user_id: int, reject_add_request: bool):
-        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
-                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) 踢出群聊"
+        logger.info(f"将群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {QQDataCacher.get_user_info(user_id).get_nickname()}({user_id}) 踢出群聊"
                     f"{'并拒绝此人加群请求' if reject_add_request else ''}")
 
 
@@ -410,8 +409,8 @@ class SetGroupBan(Action):
         super().__init__(group_id=group_id, user_id=user_id, duration=duration, callback=callback)
 
     def logger(self, result, group_id: int, user_id: int, duration: int):
-        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
-                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) 禁言 {duration} 秒")
+        logger.info(f"将群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {QQDataCacher.get_user_info(user_id).get_nickname()}({user_id}) 禁言 {duration} 秒")
 
 
 class SetGroupAnonymousBan(Action):
@@ -435,9 +434,9 @@ class SetGroupAnonymousBan(Action):
                          callback=callback, **{'flag': anonymous_flag} if anonymous_flag else {})
 
     def logger(self, result, group_id: int, anonymous: dict, anonymous_flag: str, duration: int):
-        anonymous_str = f"{cacher.get_user_info(anonymous).get('name')}" if anonymous else "匿名用户"
+        anonymous_str = f"{QQDataCacher.get_user_info(anonymous['id']).nickname}" if anonymous else "匿名用户"
         anonymous_detail = f"({anonymous['id']}; flag: {anonymous_flag})" if anonymous else ""
-        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+        logger.info(f"将群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
                     f"内成员 {anonymous_str} {anonymous_detail} 禁言 {duration} 秒")
 
 
@@ -458,7 +457,7 @@ class SetGroupWholeBan(Action):
         super().__init__(group_id=group_id, enable=enable, callback=callback)
 
     def logger(self, result, group_id: int, enable: bool):
-        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+        logger.info(f"将群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
                     f"{'开启' if enable else '关闭'}全员禁言")
 
 
@@ -480,8 +479,8 @@ class SetGroupAdmin(Action):
         super().__init__(group_id=group_id, user_id=user_id, enable=enable, callback=callback)
 
     def logger(self, result, group_id: int, user_id: int, enable: bool):
-        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
-                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+        logger.info(f"将群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {QQDataCacher.get_user_info(user_id).get_nickname()}({user_id}) "
                     f"{'设为' if enable else '取消设为'}管理员")
 
 
@@ -503,8 +502,8 @@ class SetGroupCard(Action):
         super().__init__(group_id=group_id, user_id=user_id, card=card, callback=callback)
 
     def logger(self, result, group_id: int, user_id: int, card: str):
-        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
-                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+        logger.info(f"将群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {QQDataCacher.get_user_info(user_id).get_nickname()}({user_id}) "
                     f"{'设置群名片为' if card else '删除群名片'} {card}")
 
 
@@ -525,7 +524,7 @@ class SetGroupLeave(Action):
         super().__init__(group_id=group_id, is_dismiss=is_dismiss, callback=callback)
 
     def logger(self, result, group_id: int, is_dismiss: bool):
-        logger.info(f"退出群 {cacher.get_group_info(group_id).group_name}({group_id}) "
+        logger.info(f"退出群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
                     f"{'并解散' if is_dismiss else ''}")
 
 
@@ -550,8 +549,8 @@ class SetGroupSpecialTitle(Action):
                          callback=callback)
 
     def logger(self, result, group_id: int, user_id: int, special_title: str, duration: int):
-        logger.info(f"将群 {cacher.get_group_info(group_id).group_name}({group_id}) "
-                    f"内成员 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+        logger.info(f"将群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) "
+                    f"内成员 {QQDataCacher.get_user_info(user_id).get_nickname()}({user_id}) "
                     f"{'设置专属头衔为' if special_title else '删除专属头衔'} {special_title} "
                     )
 
@@ -675,7 +674,7 @@ class GetGroupInfo(Action):
         super().__init__(group_id=group_id, no_cache=no_cache, callback=callback)
 
     def logger(self, result, group_id: int, no_cache: bool):
-        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 信息")
+        logger.debug(f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 信息")
 
 
 class GetGroupList(Action):
@@ -715,8 +714,8 @@ class GetGroupMemberInfo(Action):
 
     def logger(self, result, group_id: int, user_id: int, no_cache: bool):
         logger.debug(
-            f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 成员 "
-            f"{cacher.get_user_info(user_id).get_nickname()}({user_id}) 信息")
+            f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 成员 "
+            f"{QQDataCacher.get_user_info(user_id).get_nickname()}({user_id}) 信息")
 
 
 class GetGroupMemberList(Action):
@@ -735,7 +734,7 @@ class GetGroupMemberList(Action):
         super().__init__(group_id=group_id, callback=callback)
 
     def logger(self, result, group_id: int):
-        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 成员列表")
+        logger.debug(f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 成员列表")
 
 
 class GetGroupHonorInfo(Action):
@@ -756,7 +755,7 @@ class GetGroupHonorInfo(Action):
         super().__init__(group_id=group_id, type_=type_, callback=callback)
 
     def logger(self, result, group_id: int, type_: str):
-        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 荣誉信息, 类型: {type_}")
+        logger.debug(f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 荣誉信息, 类型: {type_}")
 
 
 class GetCookies(Action):

@@ -10,7 +10,6 @@ from Lib import Actions
 from Lib.utils import Logger, QQDataCacher
 
 logger = Logger.get_logger()
-cacher = QQDataCacher.qq_data_cache
 
 
 class UploadImage(Actions.Action):
@@ -55,7 +54,7 @@ class GetGroupFileUrl(Actions.Action):
 
     def logger(self, result, group_id: int, file_id: str, busid: str):
         logger.debug(
-            f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 文件链接, file_id: {file_id}, busid: {busid}")
+            f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 文件链接, file_id: {file_id}, busid: {busid}")
 
 
 class GetGroupRootFiles(Actions.Action):
@@ -75,7 +74,7 @@ class GetGroupRootFiles(Actions.Action):
         super().__init__(group_id=group_id, callback=callback)
 
     def logger(self, result, group_id: int):
-        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 根目录文件列表")
+        logger.debug(f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 根目录文件列表")
 
 
 class GetGroupFilesByFolder(Actions.Action):
@@ -98,7 +97,7 @@ class GetGroupFilesByFolder(Actions.Action):
 
     def logger(self, result, group_id: int, folder_id: str):
         logger.debug(
-            f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 子目录文件列表, folder_id: {folder_id}")
+            f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 子目录文件列表, folder_id: {folder_id}")
 
 
 class MoveGroupFile(Actions.Action):
@@ -128,7 +127,7 @@ class MoveGroupFile(Actions.Action):
                          target_directory=target_directory, callback=callback)
 
     def logger(self, result, group_id: int, file_id: str, parent_directory: str, target_directory: str):
-        logger.info(f"移动群 {cacher.get_group_info(group_id).group_name}({group_id}) 文件, file_id: {file_id}, "
+        logger.info(f"移动群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 文件, file_id: {file_id}, "
                     f"parent_directory: {parent_directory}, target_directory: {target_directory}")
 
 
@@ -151,7 +150,7 @@ class DeleteGroupFile(Actions.Action):
         super().__init__(group_id=group_id, file_id=file_id, callback=callback)
 
     def logger(self, result, group_id: int, file_id: str):
-        logger.info(f"删除群 {cacher.get_group_info(group_id).group_name}({group_id}) 文件, file_id: {file_id}")
+        logger.info(f"删除群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 文件, file_id: {file_id}")
 
 
 class CreateGroupFileFolder(Actions.Action):
@@ -177,7 +176,7 @@ class CreateGroupFileFolder(Actions.Action):
         super().__init__(group_id=group_id, name=name, parent_id=parent_id, callback=callback)
 
     def logger(self, result, group_id: int, name: str, parent_id: str):
-        logger.info(f"创建群 {cacher.get_group_info(group_id).group_name}({group_id}) 文件文件夹,"
+        logger.info(f"创建群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 文件文件夹,"
                     f" name: {name}, parent_id: {parent_id}")
 
 
@@ -201,7 +200,7 @@ class DeleteGroupFileFolder(Actions.Action):
 
     def logger(self, result, group_id: int, folder_id: str):
         logger.info(
-            f"删除群 {cacher.get_group_info(group_id).group_name}({group_id}) 文件文件夹, folder_id: {folder_id}")
+            f"删除群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 文件文件夹, folder_id: {folder_id}")
 
 
 class RenameGroupFileFolder(Actions.Action):
@@ -227,7 +226,7 @@ class RenameGroupFileFolder(Actions.Action):
         super().__init__(group_id=group_id, folder_id=folder_id, new_folder_name=new_folder_name, callback=callback)
 
     def logger(self, result, group_id: int, folder_id: str, new_folder_name: str):
-        logger.info(f"重命名群 {cacher.get_group_info(group_id).group_name}({group_id}) 文件文件夹,"
+        logger.info(f"重命名群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 文件文件夹,"
                     f" folder_id: {folder_id}, new_folder_name: {new_folder_name}")
 
 
@@ -255,7 +254,7 @@ class UploadGroupFile(Actions.Action):
         super().__init__(group_id=group_id, file=file, name=name, folder=folder, callback=callback)
 
     def logger(self, result, group_id: int, file: str, name: str, folder: str):
-        logger.info(f"上传群 {cacher.get_group_info(group_id).group_name}({group_id}) 文件,"
+        logger.info(f"上传群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 文件,"
                     f" name: {name},"
                     f" folder: {folder},"
                     f" file: {file}")
@@ -387,7 +386,7 @@ class GetAiCharacters(Actions.Action):
         super().__init__(group_id=group_id, chat_type=chat_type, callback=callback)
 
     def logger(self, result, group_id: int, chat_type: int):
-        group_name = cacher.get_group_info(group_id).group_name if group_id else "All Groups"
+        group_name = QQDataCacher.get_group_info(group_id).group_name if group_id else "All Groups"
         logger.debug(f"获取群 {group_name}({group_id}) Ai 语音可用声色列表, chat_type: {chat_type}")
 
 
@@ -413,7 +412,7 @@ class JoinGroupEmojiChain(Actions.Action):
         super().__init__(group_id=group_id, message_id=message_id, emoji_id=emoji_id, callback=callback)
 
     def logger(self, result, group_id: int, message_id: int, emoji_id: int):
-        logger.debug(f"加入群 {cacher.get_group_info(group_id).group_name}({group_id}) 表情接龙,"
+        logger.debug(f"加入群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 表情接龙,"
                      f" message_id: {message_id},"
                      f" emoji_id: {emoji_id}")
 
@@ -476,7 +475,7 @@ class DeleteFriend(Actions.Action):
         super().__init__(user_id=user_id, block=block, callback=callback)
 
     def logger(self, result, user_id: str, block: bool):
-        logger.info(f"删除好友 {cacher.get_user_info(int(user_id)).get_nickname()}({user_id}), block: {block}")
+        logger.info(f"删除好友 {QQDataCacher.get_user_info(int(user_id)).get_nickname()}({user_id}), block: {block}")
 
 
 class GetRkey(Actions.Action):
@@ -513,7 +512,7 @@ class DelGroupNotice(Actions.Action):
         super().__init__(group_id=group_id, notice_id=notice_id, callback=callback)
 
     def logger(self, result, group_id: int, notice_id: str):
-        logger.info(f"删除群 {cacher.get_group_info(group_id).group_name}({group_id}) 公告, notice_id: {notice_id}")
+        logger.info(f"删除群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 公告, notice_id: {notice_id}")
 
 
 class GetAiRecord(Actions.Action):
@@ -540,7 +539,7 @@ class GetAiRecord(Actions.Action):
         super().__init__(character=character, group_id=group_id, text=text, chat_type=chat_type, callback=callback)
 
     def logger(self, result, character: str, group_id: int, text: str, chat_type: int):
-        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) Ai 语音,"
+        logger.debug(f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) Ai 语音,"
                      f" character: {character},"
                      f" text: {text},"
                      f" chat_type: {chat_type}")
@@ -563,7 +562,7 @@ class GetGroupNotice(Actions.Action):
         super().__init__(group_id=group_id, callback=callback)
 
     def logger(self, result, group_id: int):
-        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 公告")
+        logger.debug(f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 公告")
 
 
 class SetGroupBotStatus(Actions.Action):
@@ -588,7 +587,7 @@ class SetGroupBotStatus(Actions.Action):
 
     def logger(self, result, group_id: int, bot_id: int, enable: int):
         logger.info(
-            f"设置群 {cacher.get_group_info(group_id).group_name}({group_id}) Bot发言状态, bot_id: {bot_id}, enable: {enable}")
+            f"设置群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) Bot发言状态, bot_id: {bot_id}, enable: {enable}")
 
 
 class SendGroupBotCallback(Actions.Action):
@@ -614,7 +613,7 @@ class SendGroupBotCallback(Actions.Action):
         super().__init__(group_id=group_id, bot_id=bot_id, data_1=data_1, data_2=data_2, callback=callback)
 
     def logger(self, result, group_id: int, bot_id: int, data_1: str, data_2: str):
-        logger.debug(f"调用群 {cacher.get_group_info(group_id).group_name}({group_id}) 机器人回调,"
+        logger.debug(f"调用群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 机器人回调,"
                      f" bot_id: {bot_id},"
                      f" data_1: {data_1},"
                      f" data_2: {data_2}")
@@ -641,7 +640,7 @@ class SendGroupNotice(Actions.Action):
         super().__init__(group_id=group_id, content=content, image=image, callback=callback)
 
     def logger(self, result, group_id: int, content: str, image: str):
-        logger.info(f"发送群 {cacher.get_group_info(group_id).group_name}({group_id}) 公告,"
+        logger.info(f"发送群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 公告,"
                     f" content: {content},"
                     f" image: {image}")
 
@@ -664,7 +663,7 @@ class SetGroupPortrait(Actions.Action):
         super().__init__(group_id=group_id, file=file, callback=callback)
 
     def logger(self, result, group_id: int, file: str):
-        logger.info(f"设置群 {cacher.get_group_info(group_id).group_name}({group_id}) 头像, file: {file}")
+        logger.info(f"设置群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 头像, file: {file}")
 
 
 class SetGroupReaction(Actions.Action):
@@ -691,7 +690,7 @@ class SetGroupReaction(Actions.Action):
         super().__init__(group_id=group_id, message_id=message_id, code=code, is_add=is_add, callback=callback)
 
     def logger(self, result, group_id: int, message_id: int, code: str, is_add: bool):
-        logger.info(f"设置群 {cacher.get_group_info(group_id).group_name}({group_id}) 表情回复,"
+        logger.info(f"设置群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 表情回复,"
                     f" message_id: {message_id},"
                     f" code: {code},"
                     f" is_add: {is_add}")
@@ -754,7 +753,7 @@ class GetEssenceMsgList(Actions.Action):
         super().__init__(group_id=group_id, callback=callback)
 
     def logger(self, result, group_id: int):
-        logger.debug(f"获取群 {cacher.get_group_info(group_id).group_name}({group_id}) 精华消息列表")
+        logger.debug(f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 精华消息列表")
 
 
 class GetFriendMsgHistory(Actions.Action):
@@ -779,7 +778,7 @@ class GetFriendMsgHistory(Actions.Action):
 
     def logger(self, result, user_id: int, message_id: int, count: int):
         logger.debug(
-            f"获取好友 {cacher.get_user_info(user_id).get_nickname()}({user_id}) "
+            f"获取好友 {QQDataCacher.get_user_info(user_id).get_nickname()}({user_id}) "
             f"历史聊天记录, message_id: {message_id}, count: {count}")
 
 
@@ -806,7 +805,7 @@ class GetGroupMsgHistory(Actions.Action):
 
     def logger(self, result, group_id: int, message_id: str, count: int):
         logger.debug(
-            f"获取群 {cacher.get_group_info(group_id).group_name}"
+            f"获取群 {QQDataCacher.get_group_info(group_id).group_name}"
             f"({group_id}) 历史聊天记录, message_id: {message_id}, count: {count}")
 
 
@@ -843,7 +842,7 @@ class GroupPoke(Actions.Action):
         super().__init__(group_id=group_id, user_id=user_id, callback=callback)
 
     def logger(self, result, group_id: int, user_id: int):
-        logger.debug(f"群 {cacher.get_group_info(group_id).group_name}({group_id}) 戳一戳, user_id: {user_id}")
+        logger.debug(f"群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 戳一戳, user_id: {user_id}")
 
 
 class MarkMsgAsRead(Actions.Action):
@@ -912,7 +911,7 @@ class SendGroupAiRecord(Actions.Action):
 
     def logger(self, result, character: str, group_id: int, text: str, chat_type: int):
         logger.debug(
-            f"发送群 {cacher.get_group_info(group_id).group_name}({group_id}) Ai 语音, "
+            f"发送群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) Ai 语音, "
             f"character: {character}, text: {text}, chat_type: {chat_type}")
 
 
@@ -936,7 +935,7 @@ class SendGroupForwardMsg(Actions.Action):
 
     def logger(self, result, group_id: int, messages: list):
         logger.info(
-            f"发送群 {cacher.get_group_info(group_id).group_name}({group_id}) 合并转发消息, messages count: {len(messages)}")
+            f"发送群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 合并转发消息, messages count: {len(messages)}")
 
 
 class SendPrivateForwardMsg(Actions.Action):
