@@ -117,7 +117,7 @@ def cq_2_array(cq: str) -> list[dict[str, dict[str, Any]]]:
                 segment_data[now_key] += c  # 继续拼接参数值
 
     if "text" in segment_data and len(segment_data["text"]):  # 处理末尾可能存在的文本内容
-        cq_array.append({"type": "text", "data": {"text": segment_data["text"]}})
+        cq_array.append({"type": "text", "data": {"text": cq_decode(segment_data["text"])}})
 
     return cq_array
 
