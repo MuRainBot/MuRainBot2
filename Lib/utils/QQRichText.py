@@ -961,7 +961,7 @@ class XML(Segment):
     segment_type = "xml"
 
     def __init__(self, data):
-        self.data = data
+        self.xml_data = data
         super().__init__({"type": "xml", "data": {"data": str(self.data)}})
 
     def set_xml_data(self, data):
@@ -970,8 +970,8 @@ class XML(Segment):
         Args:
             data: xml数据
         """
-        self.data = data
-        self.array["data"]["data"] = str(self.data)
+        self.xml_data = data
+        self.array["data"]["data"] = str(self.xml_data)
 
 
 class JSON(Segment):
@@ -985,8 +985,8 @@ class JSON(Segment):
         Args:
             data: JSON 内容
         """
-        self.data = data
-        super().__init__({"type": "json", "data": {"data": str(self.data)}})
+        self.json_data = data
+        super().__init__({"type": "json", "data": {"data": str(self.json_data)}})
 
     def set_json(self, data):
         """
@@ -994,8 +994,8 @@ class JSON(Segment):
         Args:
             data: json 内容
         """
-        self.data = data
-        self.array["data"]["data"] = str(self.data)
+        self.json_data = data
+        self.array["data"]["data"] = str(self.json_data)
 
     def get_json(self):
         """
@@ -1003,7 +1003,7 @@ class JSON(Segment):
         Returns:
             json: json数据
         """
-        return json.loads(self.data)
+        return json.loads(self.json_data)
 
 
 class QQRichText:
