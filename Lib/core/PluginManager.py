@@ -4,6 +4,7 @@
 
 import dataclasses
 import importlib
+import inspect
 import sys
 import traceback
 
@@ -221,3 +222,31 @@ def run_plugin_main_wrapper(event):
         event: 事件
     """
     run_plugin_main(event.event_data)
+
+
+def get_caller_plugin_data():
+    """
+    获取调用者的插件数据
+    :return:
+        plugin_data: dict | None
+    """
+
+    stack = inspect.stack()[1:]
+    for frame_info in stack:
+        filename = frame_info.filename
+
+        normalized_filename = os.path.normpath(filename)
+        normalized_plugins_path = os.path.normpath(PLUGINS_PATH)
+
+        if normalized_filename.startswith(normalized_plugins_path):
+            for plugin in found_plugins:
+                normalized_plugin_file_path = os.path.normpath(plugin["file_path"])
+                plugin_dir, plugin_file = os.path.split(normalized_plugin_file_path)
+
+                if plugin_dir == normalized_plugins_path:
+                    if normalized_plugin_file_path == normalized_filename:
+                        return plugin
+                else:
+                    if normalized_filename.startswith(plugin_dir):
+                        return plugin
+    return None

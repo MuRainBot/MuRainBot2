@@ -5,8 +5,8 @@ import copy
 import traceback
 
 from Lib.common import save_exc_dump
-from Lib.core import EventManager, ConfigManager
-from Lib.utils import EventClassifier, Logger, QQRichText
+from Lib.core import EventManager, ConfigManager, PluginManager
+from Lib.utils import EventClassifier, Logger, QQRichText, StateManager
 
 import inspect
 from typing import Literal, Callable, Any, Type
@@ -313,18 +313,51 @@ class Matcher:
 
         return wrapper
 
-    def match(self, event_data: EventClassifier.Event):
+    def match(self, event_data: EventClassifier.Event, plugin_data: dict):
         """
         匹配事件处理器
         Args:
             event_data: 事件数据
+            plugin_data: 插件数据
         """
         for priority, rules, handler, args, kwargs in sorted(self.handlers, key=lambda x: x[0], reverse=True):
             try:
-                if all(rule.match(event_data) for rule in rules):
-                    if handler(event_data, *args, **kwargs) is True:
-                        logger.debug(f"处理器 {handler.__name__} 阻断了事件 {event_data} 的传播")
-                        return
+                if not all(rule(event_data) for rule in rules):
+                    continue
+
+                # 检测依赖注入
+                handler_kwargs = kwargs.copy()  # 复制静态 kwargs
+
+                sig = inspect.signature(handler)
+
+                for name, param in sig.parameters.items():
+                    if name == "state":
+                        if (isinstance(event_data, EventClassifier.MessageEvent) or
+                                isinstance(event_data, EventClassifier.PrivateMessageEvent)):
+                            state_id = f"u{event_data.user_id}"
+                        elif isinstance(event_data, EventClassifier.GroupMessageEvent):
+                            state_id = f"g{event_data.group_id}_u{event_data.user_id}"
+                        else:
+                            raise TypeError("event_data must be a MessageEvent")
+                        handler_kwargs[name] = StateManager.get_state(state_id, plugin_data)
+                    elif name == "user_state":
+                        if isinstance(event_data, EventClassifier.MessageEvent):
+                            state_id = f"u{event_data.user_id}"
+                        else:
+                            raise TypeError("event_data must be a MessageEvent")
+                        handler_kwargs[name] = StateManager.get_state(state_id, plugin_data)
+                    elif name == "group_state":
+                        if isinstance(event_data, EventClassifier.GroupMessageEvent):
+                            state_id = f"g{event_data.group_id}"
+                        else:
+                            raise TypeError("event_data must be a MessageEvent")
+                        handler_kwargs[name] = StateManager.get_state(state_id, plugin_data)
+
+                result = handler(event_data, *args, **handler_kwargs)
+
+                if result is True:
+                    logger.debug(f"处理器 {handler.__name__} 阻断了事件 {event_data} 的传播")
+                    return  # 阻断同一 Matcher 内的传播
             except Exception as e:
                 if ConfigManager.GlobalConfig().debug.save_dump:
                     dump_path = save_exc_dump(f"执行匹配事件或执行处理器时出错 {event_data}")
@@ -340,12 +373,12 @@ class Matcher:
 events_matchers: dict[str, dict[Type[EventClassifier.Event], list[tuple[int, list[Rule], Matcher]]]] = {}
 
 
-def _on_event(event_data, path, event_type):
+def _on_event(event_data, path, event_type, plugin_data):
     matchers = events_matchers[path][event_type]
     for priority, rules, matcher in sorted(matchers, key=lambda x: x[0], reverse=True):
         matcher_event_data = event_data.__class__(event_data.event_data)
         if all(rule.match(matcher_event_data) for rule in rules):
-            matcher.match(matcher_event_data)
+            matcher.match(matcher_event_data, plugin_data)
 
 
 def on_event(event: Type[EventClassifier.Event], priority: int = 0, rules: list[Rule] = None):
@@ -364,12 +397,13 @@ def on_event(event: Type[EventClassifier.Event], priority: int = 0, rules: list[
         raise TypeError("rules must be a list of Rule")
     if not issubclass(event, EventClassifier.Event):
         raise TypeError("event must be an instance of EventClassifier.Event")
-    path = inspect.stack()[1].filename
+    plugin_data = PluginManager.get_caller_plugin_data()
+    path = plugin_data["path"]
     if path not in events_matchers:
         events_matchers[path] = {}
     if event not in events_matchers[path]:
         events_matchers[path][event] = []
-        EventManager.event_listener(event, path=path, event_type=event)(_on_event)
+        EventManager.event_listener(event, path=path, event_type=event, plugin_data=plugin_data)(_on_event)
     events_matcher = Matcher()
     events_matchers[path][event].append((priority, rules, events_matcher))
     return events_matcher
