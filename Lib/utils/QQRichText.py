@@ -962,7 +962,7 @@ class XML(Segment):
 
     def __init__(self, data):
         self.xml_data = data
-        super().__init__({"type": "xml", "data": {"data": str(self.data)}})
+        super().__init__({"type": "xml", "data": {"data": str(self.xml_data)}})
 
     def set_xml_data(self, data):
         """
