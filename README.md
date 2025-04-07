@@ -2,74 +2,72 @@
 
 ![MuRainBot2](https://socialify.git.ci/MuRainBot/MuRainBot2/image?custom_description=%E5%9F%BA%E4%BA%8Epython%E9%80%82%E9%85%8Donebot11%E5%8D%8F%E8%AE%AE%E7%9A%84%E8%BD%BB%E9%87%8F%E7%BA%A7QQBot%E6%A1%86%E6%9E%B6&description=1&forks=1&issues=1&logo=https%3A%2F%2Fgithub.com%2FMuRainBot%2FMuRainBot2Doc%2Fblob%2Fmaster%2Fdocs%2Fpublic%2Ficon.png%3Fraw%3Dtrue&name=1&pattern=Overlapping+Hexagons&pulls=1&stargazers=1&theme=Auto)
     <a href="https://github.com/MuRainBot/MuRainBot2/blob/master/LICENSE" style="text-decoration:none" >
-        <img src="https://img.shields.io/static/v1?label=LICENSE&message=LGPL-2.1&color=lightrey&style=for-the-badge" alt="GitHub license"/>
+        <img src="https://img.shields.io/static/v1?label=LICENSE&message=LGPL-2.1&color=lightgrey&style=for-the-badge" alt="GitHub license"/>
     </a>
     <a href="https://python.org/">
         <img src="https://img.shields.io/badge/python-3.12+-blue?logo=python&logoColor=edb641&style=for-the-badge" alt="python">
     </a>
-    <a href="https://github.com/botuniverse/onebot" style="text-decoration:none">
-        <img src="https://img.shields.io/badge/OneBot-11-black?style=for-the-badge&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHAAAABwCAMAAADxPgR5AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAAxQTFRF////29vbr6+vAAAAk1hCcwAAAAR0Uk5T////AEAqqfQAAAKcSURBVHja7NrbctswDATQXfD//zlpO7FlmwAWIOnOtNaTM5JwDMa8E+PNFz7g3waJ24fviyDPgfhz8fHP39cBcBL9KoJbQUxjA2iYqHL3FAnvzhL4GtVNUcoSZe6eSHizBcK5LL7dBr2AUZlev1ARRHCljzRALIEog6H3U6bCIyqIZdAT0eBuJYaGiJaHSjmkYIZd+qSGWAQnIaz2OArVnX6vrItQvbhZJtVGB5qX9wKqCMkb9W7aexfCO/rwQRBzsDIsYx4AOz0nhAtWu7bqkEQBO0Pr+Ftjt5fFCUEbm0Sbgdu8WSgJ5NgH2iu46R/o1UcBXJsFusWF/QUaz3RwJMEgngfaGGdSxJkE/Yg4lOBryBiMwvAhZrVMUUvwqU7F05b5WLaUIN4M4hRocQQRnEedgsn7TZB3UCpRrIJwQfqvGwsg18EnI2uSVNC8t+0QmMXogvbPg/xk+Mnw/6kW/rraUlvqgmFreAA09xW5t0AFlHrQZ3CsgvZm0FbHNKyBmheBKIF2cCA8A600aHPmFtRB1XvMsJAiza7LpPog0UJwccKdzw8rdf8MyN2ePYF896LC5hTzdZqxb6VNXInaupARLDNBWgI8spq4T0Qb5H4vWfPmHo8OyB1ito+AysNNz0oglj1U955sjUN9d41LnrX2D/u7eRwxyOaOpfyevCWbTgDEoilsOnu7zsKhjRCsnD/QzhdkYLBLXjiK4f3UWmcx2M7PO21CKVTH84638NTplt6JIQH0ZwCNuiWAfvuLhdrcOYPVO9eW3A67l7hZtgaY9GZo9AFc6cryjoeFBIWeU+npnk/nLE0OxCHL1eQsc1IciehjpJv5mqCsjeopaH6r15/MrxNnVhu7tmcslay2gO2Z1QfcfX0JMACG41/u0RrI9QAAAABJRU5ErkJggg==" alt="Badge">
+    <a href="https://11.onebot.dev/" style="text-decoration:none">
+        <img src="https://img.shields.io/badge/OneBot-11-black?style=for-the-badge&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHAAAABwCAMAAADxPgR5AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAAxQTFRF////29vbr6+vAAAAk1hCcwAAAAR0Uk5T////AEAqqfQAAAKcSURBVHja7NrbctswDATQXfD//zlpO7FlmwAWIOnOtNaTM5JwDMa8E+PNFz7g3waJ24fviyDPgfhz8fHP39cBcBL9KoJbQUxjA2iYqHL3FAnvzhL4GtVNUcoSZe6eSHizBcK5LL7dBr2AUZlev1ARRHCljzRALIEog6H3U6bCIyqIZdAT0eBuJYaGiJaHSjmkYIZd+qSGWAQnIaz2OArVnX6vrItQvbhZJtVGB5qX9wKqCMkb9W7aexfCO/rwQRBzsDIsYx4AOz0nhAtWu7bqkEQBO0Pr+Ftjt5fFCUEbm0Sbgdu8WSgJ5NgH2iu46R/o1UcBXJsFusWF/QUaz3RwJMEgngfaGGdSxJkE/Yg4lOBryBiMwvAhZrVMUUvwqU7F05b5WLaUIN4M4hRocQQRnEedgsn7TZB3UCpRrIJwQfqvGwsg18EnI2uSVNC8t+0QmMXogvbPg/xk+Mnw/6kW/rraUlvqgmFreAA09xW5t0AFlHrQZ3CsgvZm0FbHNKyBmheBKIF2cCA8A600aHPmFtRB1XvMsJAiza7LpPog0UJwccKdzw8rdf8MyN2ePYF896LC5hTzdZqxb6VNXInaupARLDNBWgI8spq4T0Qb5H4vWfPmHo8OyB1ito+AysNNz0oglj1U955sjUN9d41LnrX2D/u7eRwxyOaOpfyevCWbTgDEoilsOnu7zsKhjRCsnD/QzhdkYLBLXjiK4f3UWmcx2M7PO21CKVTH84638NTplt6JIQH0ZwCNuiWAfvuLhdrcOYPVO9eW3A67l7hZtgaY9GZo9AFc6cryjoeFBIWeU+npnk/nLE0OxCHL1eQsc1IciehjpJv5mqCsjeopaH6r15/MrxNnVhu7tmcslay2gO2Z1QfcfX0JMACG41/u0RrI9QAAAABJRU5ErkJggg==" alt="OneBot v11">
     </a>
     <br>
     <a href="https://github.com/MuRainBot/MuRainBot2">
-        <img src="https://counter.seku.su/cmoe?name=murainbot2&theme=moebooru" alt=""/>
+        <img src="https://counter.seku.su/cmoe?name=murainbot2&theme=moebooru" alt="visitor counter"/>
     </a>
 </div>
 
+## 🤔 概述
 
-## 🤔概述
+MuRainBot2 (MRB2) 是一个基于 Python、适配 OneBot v11 协议的**轻量级** QQ 机器人框架。
 
-### 这是什么？
+它专注于提供稳定高效的核心事件处理与 API 调用能力，所有具体功能（如关键词回复、群管理等）均通过插件实现，赋予开发者高度的灵活性。
 
-#### 这是一个基于python适配onebot11协议的轻量级QQBot框架
-
-切记！
-MRB2本身**不具备任何**实际功能
-
-具体的功能（如通过关键词回复特定消息等）都需要插件来实现，有任何功能的需要可以自行阅读文档编写。
-
-同时，对于具体的操作（如监听消息、发送消息、批准加群请求之类的）请先明确：
+对于具体的操作（如监听消息、发送消息、批准加群请求等）请先明确：
 
  - 什么是[OneBot11协议](https://11.onebot.dev)；
- - 什么是Onebot实现端，什么是Onebot框架；
- - Onebot实现端具有哪些features
+ - 什么是Onebot实现端，什么是Onebot开发框架；
+ - Onebot实现端具有哪些功能
 
-~~作者自己写着用的，有一些写的不好的地方还请见谅~~
+## ✨ 核心特性
+
+*   **🪶 轻量高效：** 没有太多冗杂的功能，使用简单，内存占用较低。
+*   **🧩 轻松扩展：** 灵活的插件系统，让您能够轻松、快速地添加、移除或定制所需功能。
+*   **🔁 基于线程池：** 基于内置线程池实现并发处理，没有异步的较为复杂的语法，直接编写同步代码。
+
+## 🚨 重要提醒：关于重构与兼容性
+
+> [!CAUTION]
+> **请注意：** 本项目在 2024 年底至 2025 年初进行了一次 **彻底的框架重构**（主要涉及 `dev` 分支并在 2025年1月29日 合并至 `master`）。
+>
+> **当前的 MRB2 版本与重构前的旧版本插件完全不兼容。** 如果您是旧版本用户或拥有旧插件，请参考 **[最新文档](https://mrb2.xiaosu.icu)** 进行适配迁移。
+
+## 📖 背景与术语
+
+*   **MRB2：** MuRainBot2 的缩写。
+*   **OneBot v11 协议：** 一个广泛应用于即时通讯软件中的聊天机器人的应用层协议标准，本项目基于此标准开发。详情请见 [OneBot v11](https://11.onebot.dev/)。
+*   **框架 (SDK)：** MRB2 作为一个 OneBot SDK（或称开发框架），负责处理与 OneBot 实现端的通信、事件分发、API 调用封装等底层工作，以及提供插件系统，让开发者可以专注于插件功能的实现。更多通用术语可参考 [OneBot v12 术语表](https://12.onebot.dev/glossary/) (v11 与 v12 大体相通)。
+*   **插件：** MRB2 的所有功能都由插件提供。插件通常是放置在 `plugins` 目录下的 Python 文件或包含 `__init__.py` 的 Python 包。
 
 ~~*什么？你问我为什么要叫MRB2，因为这个框架最初是给我的一个叫做沐雨的qqbot写的，然后之前还有[一个写的很垃圾](https://github.com/xiaosuyyds/PyQQbot)的版本，所以就叫做MRB2*~~
 
+## 🐛 问题反馈
 
-### 关于本Readme以及MRB2文档的一些术语
-#### 首先推荐在阅读本Readme以及MRB2文档中先了解Onebot的一些基本属于以方便理解[我是链接](https://12.onebot.dev/glossary)
-(上述的术语表中是Onebot12的定义，对于Onebot11可能略有偏差但是大体相通)
-* MRB2：MuRainBot2，缩写MRB2
-* onebot11协议：[OneBot v11](https://11.onebot.dev/)，一个用于QQ机器人的协议，本项目就是基于此协议开发的框架
-* 框架：根据[onebot12的定义](https://12.onebot.dev/glossary/#onebot-sdk)(~~我也不知道为什么，但是onebot11就是没有定义什么是框架和sdk之类乱七八糟的术语表~~)
-MRB2就是这样一个SDK（也可称为框架），可以让插件不需要自行实现http通讯和事件、操作、消息等内容的事件分发与解析，同时将实际的功能分为一个一个插件，方便管理。
-* 插件：MRB2本身不具备任何实际上的功能，一切都需要编写插件来实现功能；
-MRB2的插件，统一放在`plugins`文件夹中，每个插件都是一个python文件，也可以是一个文件夹，文件夹中必须包含一个`__init__.py`文件用于初始化插件
+如果使用时遇到问题，请按以下步骤操作：
 
-### 关于一些提醒
+1.  将框架版本更新到 [`dev`](https://github.com/MuRainBot/MuRainBot2/tree/dev) 分支
+2.  将 `config.yml` 中的 `debug.enable` 设置为 `true`。
+3.  复现您遇到的 Bug。
+4.  **检查 Onebot 实现端的日志**，确认问题是否源于实现端本身。如果是，请向您使用的实现端反馈。
+5.  如果问题确认在 MRB2 框架：
+    *   请准备**完整**的 MRB2 日志文件 (`logs` 目录下)。您可以自行遮挡日志中的 QQ 号、群号等敏感信息。
+    *   提供清晰的错误描述、复现步骤。
+    *   如果开启了 `save_dump` 且生成了 dump 文件，可以一并提供。（不强制，但是推荐提供，不过需要注意可以检查一下是否包含apikey等敏感信息）
+    *   将以上信息提交到项目的 [**Issues**](https://github.com/MuRainBot/MuRainBot2/issues/new/choose) 页面。
 
-本项目在2024年12月4日在dev分支对框架进行了重构，主要重构了目录结构与一些Lib的实现，不支持过去的插件，如果你有旧版本的插件，可以尝试使用新的框架的文档来进行适配（放心，差别不会很大）。
-
-并在2025年1月29日将重构后的dev分支合并到了master分支。
-
----
-
-如果使用时遇到问题，请将 `config.yml` 的`debug.enable`设置为`true`，然后复现 bug，
-并检查该问题是否是你使用的 Onebot 实现端的问题（可查看实现端的日志检查是否有异常）
-
-如果是，请自行在你使用的 Onebot 实现端进行反馈。
-
-如果不是，将完整 完整 完整的将日志信息（部分对于问题排查不重要的敏感信息（如 QQ 群号、 QQ 号等）可自行遮挡） 和错误描述发到 [issues](https://github.com/MuRainBot/MuRainBot2/issues/new/choose)。
-如果你开启了 `config.yml` 的`debug.save_dump` 也可以把出错的 dump 文件也一起上传以辅助排查问题。
-
-### 目录结构
-
+## 📁 目录结构
 
 <details>
-<summary>查看基本看目录结构</summary>
+<summary>查看基本目录结构</summary>
 
 ```
 ├─ data                MRB2及插件的临时/缓存文件
@@ -87,7 +85,7 @@ MRB2的插件，统一放在`plugins`文件夹中，每个插件都是一个pyth
 │   ...
 ├─ plugins
 │   ├─ xxx.py           xxx插件代码
-│   ├─ yyy.py           yyy插件代码 
+│   ├─ yyy.py           yyy插件代码
 │   ...
 ├─ plugin_configs
 │   ├─ xxx.yml          xxx插件的配置文件
@@ -100,33 +98,41 @@ MRB2的插件，统一放在`plugins`文件夹中，每个插件都是一个pyth
 
 </details>
 
+## 💻 如何部署？
 
-## 💻如何部署？
-**作者在python3.12编写，由于使用了一些高版本python添加的特性
-（例如[PEP701中取消部分f-string语法限制（这真的超方便的好不好(）](https://docs.python.org/zh-cn/3.13/whatsnew/3.12.html#whatsnew312-pep701)），
-推荐在3.12.X或以上版本部署和运行**
+**本项目使用 Python 3.12+ 开发，并利用了其部分新特性 (如 [PEP 701](https://docs.python.org/zh-cn/3/whatsnew/3.12.html#whatsnew312-pep701))。推荐使用 Python 3.12 或更高版本运行，如果使用 Python 3.12 以下版本，由于未经测试，可能会导致部分代码出现问题。**
 
-### 具体可查看本项目的[`文档`](https://mrb2.xiaosu.icu)
+详细的部署步骤、配置说明和插件开发指南，请查阅：
 
-## 📕关于版本
-* 目前MRB2版本为1.0.0-dev
+### ➡️ [**MRB2 官方文档**](https://mrb2.xiaosu.icu)
 
-* 关于版本号的说明：
-   * 版本号格式为`<主版本>.<次版本>.<修订版本>-<特殊提醒/版本(如果有)>` 例如`1.0.0`
-   * 开发版版本号后统一添加`-dev`后缀 例如`1.0.0-dev`
+## 📕 关于版本
 
-## ❤️鸣谢❤️
+*   当前版本：`1.0.0-dev`
+*   版本号格式：`<主版本>.<次版本>.<修订版本>[-<特殊标识>]` (例如 `1.0.0`, `1.0.1-beta`, `1.1.0-dev`)。
 
-### 请勿直接提交到[`master`](https://github.com/MuRainBot/MuRainBot2)分支，请先提交到[`dev`](https://github.com/MuRainBot/MuRainBot2/tree/dev)分支，每隔一段时间我们会合并到[`master`](https://github.com/MuRainBot/MuRainBot2)分支
+## ❤️ 鸣谢 ❤️
 
-### 感谢所有为此项目做出贡献的大大，你们的存在，让社区变得更加美好~！
+**贡献指南：** 我们欢迎各种形式的贡献！请将您的 Pull Request 提交到 `dev` 分支。我们会定期将 `dev` 分支的稳定更新合并到 `master` 分支。
+
+**感谢所有为 MRB2 付出努力的贡献者！**
+
 <a href="https://github.com/MuRainBot/MuRainBot2/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=MuRainBot/MuRainBot2&max=999" alt=感谢他们（鼓掌）！>
+  <img src="https://contrib.rocks/image?repo=MuRainBot/MuRainBot2&max=999" alt="Contributors">
 </a>
 
-### 以及特别鸣谢[HarcicYang](https://github.com/HarcicYang)和[kaokao221](https://github.com/kaokao221)为此项目提供了许多的帮助~
+**特别感谢 [HarcicYang](https://github.com/HarcicYang)、[kaokao221](https://github.com/kaokao221) 和 [BigCookie233](https://github.com/BigCookie233) 在项目开发过程中提供的宝贵帮助！**
 
-
-## ⭐StarHistory⭐
+## ⭐ Star History ⭐
 
 [![](https://api.star-history.com/svg?repos=MuRainBot/MuRainBot2&type=Date)](https://github.com/MuRainBot/MuRainBot2/stargazers)
+
+
+## 🚀 关于性能
+
+本项目在正常使用，默认配置，多群聊，6~8个中等复杂度（如签到、图片绘制（如视频信息展示等）、AI聊天（基于API接口调用的））的插件情况下内存占用稳定在 100~160MB 左右
+（具体取决于插件和群聊数量以及配置文件，也可能超过这个范围）
+
+仅安装默认插件，默认配置，情况下内存占用稳定在 40MB-60MB 左右
+
+如果实在内存不够用可调小缓存（配置文件中的 `qq_data_cache.max_cache_size`）（尽管这个也占不了多少内存）
