@@ -353,7 +353,7 @@ def garbage_collection():
     """
     counter = 0
 
-    with group_info_lock:
+    with group_member_info_lock:
         for k in list(group_member_info.keys()):
             group_member_items = list(zip(group_member_info[k].keys(), group_member_info[k].values()))
             max_last_use_time = max([item[1].last_use for item in group_member_items])
