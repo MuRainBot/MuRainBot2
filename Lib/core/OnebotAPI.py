@@ -199,14 +199,14 @@ class OnebotAPI:
         }
         return self.get("/get_msg", data)
 
-    def get_forward_msg(self, message_id: int):
+    def get_forward_msg(self, id: int):
         """
         获取合并转发消息
         Args:
-            message_id: 消息id
+            id: 合并转发id
         """
         data = {
-            "message_id": message_id
+            "id": id
         }
         return self.get("/get_forward_msg", data)
 

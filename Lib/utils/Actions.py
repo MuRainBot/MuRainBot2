@@ -335,16 +335,16 @@ class GetForwardMsg(Action):
 
     call_func = api.get_forward_msg
 
-    def __init__(self, message_id: int, callback: Callable[[Result], ...] = None):
+    def __init__(self, id: int, callback: Callable[[Result], ...] = None):
         """
         Args:
-            message_id (int): 合并转发 ID
+            id (int): 合并转发 ID
             callback (Callable[[Result], ...], optional): 回调函数. Defaults to None.
         """
-        super().__init__(message_id=message_id, callback=callback)
+        super().__init__(id=id, callback=callback)
 
-    def logger(self, result, message_id: int):
-        logger.debug(f"获取合并转发消息 {message_id}")
+    def logger(self, result, id: int):
+        logger.debug(f"获取合并转发消息 {id}")
 
 
 class SendLike(Action):

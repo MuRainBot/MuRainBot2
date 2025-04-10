@@ -1,7 +1,7 @@
 """
 工具
 """
-
+import os.path
 import shutil
 import sys
 import time
@@ -241,9 +241,12 @@ def save_exc_dump(description: str = None, path: str = None):
                 break
             i += 1
 
+        for _ in ['?', '*', '"', '<', '>']:
+            path_ = path_.replace(_, "")
+
         kwargs = {
             "frame": frame,
-            "path": path_
+            "path": os.path.normpath(path_)
         }
         if description:
             kwargs["description"] = description

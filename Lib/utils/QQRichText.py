@@ -117,7 +117,7 @@ def cq_2_array(cq: str) -> list[dict[str, dict[str, Any]]]:
                 segment_data[now_key] += c  # 继续拼接参数值
 
     if "text" in segment_data and len(segment_data["text"]):  # 处理末尾可能存在的文本内容
-        cq_array.append({"type": "text", "data": {"text": segment_data["text"]}})
+        cq_array.append({"type": "text", "data": {"text": cq_decode(segment_data["text"])}})
 
     return cq_array
 
@@ -961,8 +961,8 @@ class XML(Segment):
     segment_type = "xml"
 
     def __init__(self, data):
-        self.data = data
-        super().__init__({"type": "xml", "data": {"data": str(self.data)}})
+        self.xml_data = data
+        super().__init__({"type": "xml", "data": {"data": str(self.xml_data)}})
 
     def set_xml_data(self, data):
         """
@@ -970,8 +970,8 @@ class XML(Segment):
         Args:
             data: xml数据
         """
-        self.data = data
-        self.array["data"]["data"] = str(self.data)
+        self.xml_data = data
+        self.array["data"]["data"] = str(self.xml_data)
 
 
 class JSON(Segment):
@@ -985,8 +985,8 @@ class JSON(Segment):
         Args:
             data: JSON 内容
         """
-        self.data = data
-        super().__init__({"type": "json", "data": {"data": str(self.data)}})
+        self.json_data = data
+        super().__init__({"type": "json", "data": {"data": str(self.json_data)}})
 
     def set_json(self, data):
         """
@@ -994,8 +994,8 @@ class JSON(Segment):
         Args:
             data: json 内容
         """
-        self.data = data
-        self.array["data"]["data"] = str(self.data)
+        self.json_data = data
+        self.array["data"]["data"] = str(self.json_data)
 
     def get_json(self):
         """
@@ -1003,7 +1003,7 @@ class JSON(Segment):
         Returns:
             json: json数据
         """
-        return json.loads(self.data)
+        return json.loads(self.json_data)
 
 
 class QQRichText:
