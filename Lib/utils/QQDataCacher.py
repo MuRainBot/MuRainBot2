@@ -69,7 +69,7 @@ class UserData(QQDataItem):
         Returns:
             None
         """
-        if self._user_id <= 0:
+        if int(self._user_id) <= 0:
             logger.warn(f"获取用户{self._user_id}缓存信息失败: group_id为0")
             return
         try:
@@ -174,7 +174,7 @@ class GroupMemberData(QQDataItem):
         Returns:
             None
         """
-        if self._group_id <= 0 or self._user_id <= 0:
+        if int(self._group_id) <= 0 or int(self._user_id) <= 0:
             logger.warn(f"获取群{self._group_id}中成员{self._user_id}缓存信息失败: group_id或user_id为0")
             return
         try:
@@ -244,7 +244,7 @@ class GroupData(QQDataItem):
         Returns:
             None
         """
-        if self._group_id <= 0:
+        if int(self._group_id) <= 0:
             logger.warn(f"获取群{self._group_id}缓存信息失败: group_id为0")
             return
         try:
