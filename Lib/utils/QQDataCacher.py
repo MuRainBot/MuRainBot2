@@ -69,6 +69,9 @@ class UserData(QQDataItem):
         Returns:
             None
         """
+        if self._user_id <= 0:
+            logger.warn(f"获取用户{self._user_id}缓存信息失败: group_id为0")
+            return
         try:
             data = api.get_stranger_info(self._user_id)
             for k in data:
@@ -171,6 +174,9 @@ class GroupMemberData(QQDataItem):
         Returns:
             None
         """
+        if self._group_id <= 0 or self._user_id <= 0:
+            logger.warn(f"获取群{self._group_id}中成员{self._user_id}缓存信息失败: group_id或user_id为0")
+            return
         try:
             data = api.get_group_member_info(self._group_id, self._user_id, no_cache=True)
             for k in data:
@@ -238,6 +244,9 @@ class GroupData(QQDataItem):
         Returns:
             None
         """
+        if self._group_id <= 0:
+            logger.warn(f"获取群{self._group_id}缓存信息失败: group_id为0")
+            return
         try:
             data = api.get_group_info(group_id=self._group_id, no_cache=True)
             for k in data:
