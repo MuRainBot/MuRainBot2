@@ -39,15 +39,31 @@ def load_plugin(plugin):
         plugin: 插件信息
     """
     name = plugin["name"]
-    file_path = plugin["file_path"]
+    full_path = plugin["path"]
+    is_package = os.path.isdir(full_path) and os.path.exists(os.path.join(full_path, "__init__.py"))
 
-    # 创建模块规范
-    spec = importlib.util.spec_from_file_location(name, file_path)
+    # 计算导入路径
+    # 获取相对于 WORK_PATH 的路径，例如 "plugins/AIChat" 或 "plugins/single_file_plugin.py"
+    relative_plugin_path = os.path.relpath(full_path, start=WORK_PATH)
 
-    # 创建新模块
-    module = importlib.util.module_from_spec(spec)
+    # 将路径分隔符替换为点，例如 "plugins.AIChat" 或 "plugins.single_file_plugin"
+    import_path = relative_plugin_path.replace(os.sep, '.')
+    if not is_package and import_path.endswith('.py'):
+        import_path = import_path[:-3]  # 去掉 .py 后缀
 
-    spec.loader.exec_module(module)
+    logger.debug(f"计算 {name} 得到的导入路径: {import_path}")
+
+    if WORK_PATH not in sys.path:
+        logger.warning(f"项目根目录 {WORK_PATH} 不在 sys.path 中，正在添加。请检查执行环境。")
+        sys.path.insert(0, WORK_PATH)  # 插入到前面，优先查找
+
+    try:
+        logger.debug(f"尝试加载: {import_path}")
+        module = importlib.import_module(import_path)
+    except ImportError as e:
+        logger.error(f"加载 {import_path} 失败: {repr(e)}\n"
+                     f"{traceback.format_exc()}")
+        raise
 
     plugin_info = None
     try:
@@ -57,19 +73,6 @@ def load_plugin(plugin):
             logger.warning(f"插件 {name} 的 plugin_info 并非 PluginInfo 类型，无法获取插件信息")
     except AttributeError:
         logger.warning(f"插件 {name} 未定义 plugin_info 属性，无法获取插件信息")
-
-    # 获取相对路径
-    relative_path = os.path.relpath(plugin["path"], start=WORK_PATH)
-
-    # 替换文件分隔符为点
-    relative_path = relative_path.replace(os.sep, '.')
-
-    # 去除最后的 .py 后缀
-    if relative_path.endswith('.py'):
-        relative_path = relative_path[:-3]  # 去掉 .py
-
-    # 将模块添加到sys.modules内
-    sys.modules[relative_path] = module
 
     return module, plugin_info
 

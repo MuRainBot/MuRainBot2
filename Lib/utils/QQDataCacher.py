@@ -69,6 +69,9 @@ class UserData(QQDataItem):
         Returns:
             None
         """
+        if int(self._user_id) <= 0:
+            logger.warn(f"获取用户{self._user_id}缓存信息失败: user_id小于等于0")
+            return
         try:
             data = api.get_stranger_info(self._user_id)
             for k in data:
@@ -171,6 +174,9 @@ class GroupMemberData(QQDataItem):
         Returns:
             None
         """
+        if int(self._group_id) <= 0 or int(self._user_id) <= 0:
+            logger.warn(f"获取群{self._group_id}中成员{self._user_id}缓存信息失败: group_id或user_id小于等于0")
+            return
         try:
             data = api.get_group_member_info(self._group_id, self._user_id, no_cache=True)
             for k in data:
@@ -238,6 +244,9 @@ class GroupData(QQDataItem):
         Returns:
             None
         """
+        if int(self._group_id) <= 0:
+            logger.warn(f"获取群{self._group_id}缓存信息失败: group_id小于等于0")
+            return
         try:
             data = api.get_group_info(group_id=self._group_id, no_cache=True)
             for k in data:
@@ -353,7 +362,7 @@ def garbage_collection():
     """
     counter = 0
 
-    with group_info_lock:
+    with group_member_info_lock:
         for k in list(group_member_info.keys()):
             group_member_items = list(zip(group_member_info[k].keys(), group_member_info[k].values()))
             max_last_use_time = max([item[1].last_use for item in group_member_items])

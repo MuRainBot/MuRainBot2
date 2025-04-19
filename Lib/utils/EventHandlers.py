@@ -322,7 +322,7 @@ class Matcher:
         """
         for priority, rules, handler, args, kwargs in sorted(self.handlers, key=lambda x: x[0], reverse=True):
             try:
-                if not all(rule(event_data) for rule in rules):
+                if not all(rule.match(event_data) for rule in rules):
                     continue
 
                 # 检测依赖注入

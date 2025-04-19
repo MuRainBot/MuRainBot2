@@ -106,6 +106,7 @@ class OnebotAPI:
         if config.api.access_token:
             headers["Authorization"] = f"Bearer {config.api.access_token}"
         # 发起get请求
+        creat_dump = True
         try:
             response = requests.post(
                 url,
@@ -113,6 +114,7 @@ class OnebotAPI:
                 data=json.dumps(data if data is not None else {})
             )
             if response.status_code != 200 or (response.json()['status'] != 'ok' or response.json()['retcode'] != 0):
+                creat_dump = False
                 raise Exception(f"返回异常, 状态码: {response.status_code}, 返回内容: {response.text}")
 
             # 如果original为真，则返回原值和response
@@ -121,7 +123,7 @@ class OnebotAPI:
             else:
                 return response.json()['data']
         except Exception as e:
-            if ConfigManager.GlobalConfig().debug.save_dump:
+            if ConfigManager.GlobalConfig().debug.save_dump and creat_dump:
                 dump_path = save_exc_dump(f"调用 API: {node} data: {data} 异常")
             else:
                 dump_path = None

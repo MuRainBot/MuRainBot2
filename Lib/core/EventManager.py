@@ -1,7 +1,7 @@
 """
 事件管理器，用于管理事件与事件监听器
 """
-
+import traceback
 from typing import Any, TypeVar
 
 from collections.abc import Callable
@@ -40,7 +40,7 @@ class Hook(_Event):
                     try:
                         res = listener.func(self, **listener.kwargs)
                     except Exception as e:
-                        logger.error(f"Error occurred in listener: {repr(e)}")
+                        logger.error(f"Error occurred in listener: {repr(e)}\n{traceback.format_exc()}")
                         continue
                 else:
                     res = listener.func(self, **listener.kwargs)
@@ -114,7 +114,7 @@ class Event(_Event):
                     try:
                         res = listener.func(self, **listener.kwargs)
                     except Exception as e:
-                        logger.error(f"Error occurred in listener: {repr(e)}")
+                        logger.error(f"Error occurred in listener: {repr(e)}\n{traceback.format_exc()}")
                         continue
                 else:
                     res = listener.func(self, **listener.kwargs)

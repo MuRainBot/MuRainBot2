@@ -4,6 +4,7 @@
 import os.path
 import shutil
 import sys
+import threading
 import time
 import traceback
 import uuid
@@ -187,6 +188,19 @@ def function_cache(max_size: int, expiration_time: int = -1):
     return cache_decorator
 
 
+def thread_lock(func):
+    """
+    线程锁装饰器
+    """
+    thread_lock = threading.Lock()
+
+    def wrapper(*args, **kwargs):
+        with thread_lock:
+            return func(*args, **kwargs)
+
+    return wrapper
+
+
 def finalize_and_cleanup():
     """
     结束运行
@@ -200,6 +214,7 @@ def finalize_and_cleanup():
     logger.info("再见！\n")
 
 
+@thread_lock
 def save_exc_dump(description: str = None, path: str = None):
     """
     保存异常堆栈
