@@ -332,11 +332,13 @@ class Matcher:
 
                 for name, param in sig.parameters.items():
                     if name == "state":
-                        if (isinstance(event_data, EventClassifier.MessageEvent) or
-                                isinstance(event_data, EventClassifier.PrivateMessageEvent)):
-                            state_id = f"u{event_data.user_id}"
-                        elif isinstance(event_data, EventClassifier.GroupMessageEvent):
-                            state_id = f"g{event_data.group_id}_u{event_data.user_id}"
+                        if isinstance(event_data, EventClassifier.MessageEvent):
+                            if event_data.message_type == "private":
+                                state_id = f"u{event_data.user_id}"
+                            elif event_data.message_type == "group":
+                                state_id = f"g{event_data["group_id"]}_u{event_data.user_id}"
+                            else:
+                                raise TypeError("event_data.message_type must be private or group")
                         else:
                             raise TypeError("event_data must be a MessageEvent")
                         handler_kwargs[name] = StateManager.get_state(state_id, plugin_data)
