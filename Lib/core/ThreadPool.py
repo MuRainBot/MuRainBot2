@@ -3,16 +3,13 @@
 Created by BigCookie233
 """
 
-import sys
-import traceback
+import atexit
 from concurrent.futures import ThreadPoolExecutor
 
+from Lib.common import save_exc_dump
 from Lib.core import ConfigManager
 from Lib.core.ConfigManager import GlobalConfig
 from Lib.utils.Logger import get_logger
-from Lib.common import save_exc_dump
-
-import atexit
 
 thread_pool = None
 logger = get_logger()
@@ -50,10 +47,11 @@ def _wrapper(func, *args, **kwargs):
             dump_path = None
         # 打印到日志中
         logger.error(
-            f"Error in async task({func.__module__}.{func.__name__}): {repr(e)}\n"
-            f"{"".join(traceback.format_exc())}"
-            f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}"
+            f"Error in async task({func.__module__}.{func.__name__}): {repr(e)}"
+            f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+            exc_info=True
         )
+        return None
 
 
 def async_task(func):

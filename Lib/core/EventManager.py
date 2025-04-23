@@ -1,16 +1,14 @@
 """
 事件管理器，用于管理事件与事件监听器
 """
-import traceback
-from typing import Any, TypeVar
-
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any, TypeVar
 
-from Lib.core.ThreadPool import async_task
 from Lib.core import ConfigManager
+from Lib.core.ThreadPool import async_task
 from Lib.utils import Logger
-import inspect
 
 logger = Logger.get_logger()
 
@@ -40,13 +38,14 @@ class Hook(_Event):
                     try:
                         res = listener.func(self, **listener.kwargs)
                     except Exception as e:
-                        logger.error(f"Error occurred in listener: {repr(e)}\n{traceback.format_exc()}")
+                        logger.error(f"Error occurred in listener: {repr(e)}", exc_info=True)
                         continue
                 else:
                     res = listener.func(self, **listener.kwargs)
                 if res is True:
                     return True
             return False
+        return None
 
 
 T = TypeVar('T', bound='_Event')
@@ -114,7 +113,7 @@ class Event(_Event):
                     try:
                         res = listener.func(self, **listener.kwargs)
                     except Exception as e:
-                        logger.error(f"Error occurred in listener: {repr(e)}\n{traceback.format_exc()}")
+                        logger.error(f"Error occurred in listener: {repr(e)}", exc_info=True)
                         continue
                 else:
                     res = listener.func(self, **listener.kwargs)

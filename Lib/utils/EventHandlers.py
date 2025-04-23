@@ -2,14 +2,12 @@
 事件处理器
 """
 import copy
-import traceback
+import inspect
+from typing import Literal, Callable, Any, Type
 
 from Lib.common import save_exc_dump
 from Lib.core import EventManager, ConfigManager, PluginManager
 from Lib.utils import EventClassifier, Logger, QQRichText, StateManager
-
-import inspect
-from typing import Literal, Callable, Any, Type
 
 logger = Logger.get_logger()
 
@@ -89,14 +87,15 @@ class KeyValueRule(Rule):
                     return self.value not in event_data.get(self.key)
                 case "func":
                     return self.func(event_data.get(self.key), self.value)
+            return None
         except Exception as e:
             if ConfigManager.GlobalConfig().debug.save_dump:
                 dump_path = save_exc_dump(f"执行匹配事件器时出错 {event_data}")
             else:
                 dump_path = None
-            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}\n"
-                         f"{traceback.format_exc()}"
-                         f"{f"已保存异常到 {dump_path}" if dump_path else ""}")
+            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}"
+                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                         exc_info=True)
             return False
 
 
@@ -122,9 +121,9 @@ class FuncRule(Rule):
             else:
                 dump_path = None
 
-            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}\n"
-                         f"{traceback.format_exc()}"
-                         f"{f"已保存异常到 {dump_path}" if dump_path else ""}"
+            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}"
+                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                         exc_info=True
                          )
             return False
 
@@ -366,9 +365,9 @@ class Matcher:
                 else:
                     dump_path = None
                 logger.error(
-                    f"执行匹配事件或执行处理器时出错 {event_data}: {repr(e)}\n"
-                    f"{traceback.format_exc()}"
-                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}"
+                    f"执行匹配事件或执行处理器时出错 {event_data}: {repr(e)}"
+                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                    exc_info=True
                 )
 
 

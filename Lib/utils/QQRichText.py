@@ -3,12 +3,11 @@ QQ富文本
 """
 import inspect
 import json
-import traceback
 from typing import Any
 from urllib.parse import urlparse
 
-from Lib.constants import *
 from Lib.common import save_exc_dump
+from Lib.constants import *
 from Lib.core import ConfigManager
 from Lib.utils import QQDataCacher, Logger
 
@@ -1097,9 +1096,9 @@ class QQRichText:
                         dump_path = save_exc_dump(f"转换{rich[i]}时失败")
                     else:
                         dump_path = None
-                    Logger.get_logger().warning(f"转换{rich[i]}时失败，报错信息: {repr(e)}\n"
-                                                f"{traceback.format_exc()}"
-                                                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
+                    Logger.get_logger().warning(f"转换{rich[i]}时失败，报错信息: {repr(e)}"
+                                                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                                                exc_info=True)
                     rich[i] = Segment(rich[i])
             else:
                 rich[i] = Segment(rich[i])

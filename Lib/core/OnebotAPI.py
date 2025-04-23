@@ -128,9 +128,9 @@ class OnebotAPI:
             else:
                 dump_path = None
             logger.error(
-                f"调用 API: {node} data: {data} 异常: {repr(e)}\n"
-                f"{traceback.format_exc()}"
-                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}"
+                f"调用 API: {node} data: {data} 异常: {repr(e)}"
+                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                exc_info=True
             )
             raise e
 

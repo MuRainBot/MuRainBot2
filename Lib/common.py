@@ -6,7 +6,6 @@ import shutil
 import sys
 import threading
 import time
-import traceback
 import uuid
 from collections import OrderedDict
 from io import BytesIO
@@ -270,8 +269,7 @@ def save_exc_dump(description: str = None, path: str = None):
 
         coredumpy.dump(**kwargs)
     except Exception as e:
-        logger.error(f"保存异常堆栈时发生错误: {repr(e)}\n"
-                     f"{traceback.format_exc()}")
+        logger.error(f"保存异常堆栈时发生错误: {repr(e)}", exc_info=True)
         return None
 
     return kwargs["path"]
