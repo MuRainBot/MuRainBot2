@@ -77,7 +77,8 @@ def event_listener(event_class: type[T], priority: int = 0, **kwargs):
         priority: 优先级，默认为0
         **kwargs: 附加参数
     """
-    assert issubclass(event_class, _Event), "event_class 类必须是 _Event 的子类"
+    if not issubclass(event_class, _Event):
+        raise TypeError("event_class 类必须是 _Event 的子类")
 
     def wrapper(func: Callable[[T, ...], Any]):
         # 注册事件监听器
@@ -98,10 +99,9 @@ def unregister_listener(event_class: type[T], func: Callable[[T, ...], Any]):
         func: 监听器函数
     """
     if not issubclass(event_class, _Event):
-        # 使用 TypeError 而非 assert，因为这是类型错误
         raise TypeError("event_class 类必须是 _Event 的子类")
 
-    listeners_list = event_listeners.get(event_class)  # 使用 .get() 避免 KeyError
+    listeners_list = event_listeners.get(event_class)
 
     if not listeners_list:
         raise ValueError(f"事件类型 {event_class.__name__} 没有已注册的监听器。")
