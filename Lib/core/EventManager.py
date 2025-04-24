@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from Lib.core import ConfigManager
 from Lib.core.ThreadPool import async_task
 from Lib.utils import Logger
 
@@ -24,6 +23,7 @@ class Hook(_Event):
     """
     钩子事件，用于在事件处理过程中跳过某些监听器
     """
+
     def __init__(self, event, listener):
         self.event = event
         self.listener = listener
@@ -34,14 +34,11 @@ class Hook(_Event):
         """
         if self.__class__ in event_listeners:
             for listener in sorted(event_listeners[self.__class__], key=lambda i: i.priority, reverse=True):
-                if not ConfigManager.GlobalConfig().debug.enable:
-                    try:
-                        res = listener.func(self, **listener.kwargs)
-                    except Exception as e:
-                        logger.error(f"Error occurred in listener: {repr(e)}", exc_info=True)
-                        continue
-                else:
+                try:
                     res = listener.func(self, **listener.kwargs)
+                except Exception as e:
+                    logger.error(f"监听器中发生错误: {repr(e)}", exc_info=True)
+                    continue
                 if res is True:
                     return True
             return False
@@ -63,7 +60,7 @@ class EventListener:
 
     def __post_init__(self):
         # 确保监听器函数至少有一个参数
-        assert len(inspect.signature(self.func).parameters) >= 1, "The listener takes at least 1 parameter"
+        assert len(inspect.signature(self.func).parameters) >= 1, "监听器至少接受 1 个参数"
 
 
 # 定义监听器的类型和存储
@@ -80,7 +77,7 @@ def event_listener(event_class: type[T], priority: int = 0, **kwargs):
         priority: 优先级，默认为0
         **kwargs: 附加参数
     """
-    assert issubclass(event_class, _Event), "Event class must be a subclass of Event"
+    assert issubclass(event_class, _Event), "event_class 类必须是 _Event 的子类"
 
     def wrapper(func: Callable[[T, ...], Any]):
         # 注册事件监听器
@@ -89,6 +86,41 @@ def event_listener(event_class: type[T], priority: int = 0, **kwargs):
         return func
 
     return wrapper
+
+
+def unregister_listener(event_class: type[T], func: Callable[[T, ...], Any]):
+    """
+    用于取消注册监听器
+    注意，会删除所有与给定函数匹配的监听器。
+
+    Args:
+        event_class: 事件类型
+        func: 监听器函数
+    """
+    if not issubclass(event_class, _Event):
+        # 使用 TypeError 而非 assert，因为这是类型错误
+        raise TypeError("event_class 类必须是 _Event 的子类")
+
+    listeners_list = event_listeners.get(event_class)  # 使用 .get() 避免 KeyError
+
+    if not listeners_list:
+        raise ValueError(f"事件类型 {event_class.__name__} 没有已注册的监听器。")
+
+    # 查找所有与给定函数匹配的监听器对象
+    listeners_to_remove = [listener for listener in listeners_list if listener.func == func]
+
+    if not listeners_to_remove:
+        # 如果没有找到匹配的函数
+        raise ValueError(f"未找到函数 {func.__name__} 对应的监听器，无法为事件 {event_class.__name__} 注销。")
+
+    # 移除所有找到的监听器
+    removed_count = 0
+    for listener_obj in listeners_to_remove:
+        listeners_list.remove(listener_obj)
+        removed_count += 1
+
+    if not listeners_list:
+        del event_listeners[event_class]
 
 
 class Event(_Event):
@@ -107,16 +139,13 @@ class Event(_Event):
             res_list = []
             for listener in sorted(event_listeners[self.__class__], key=lambda i: i.priority, reverse=True):
                 if self._call_hook(listener):
-                    logger.debug(f"Skipped listener: {listener.func.__name__}")
+                    logger.debug(f"由 Hook 跳过监听器: {listener.func.__name__}")
                     continue
-                if not ConfigManager.GlobalConfig().debug.enable:
-                    try:
-                        res = listener.func(self, **listener.kwargs)
-                    except Exception as e:
-                        logger.error(f"Error occurred in listener: {repr(e)}", exc_info=True)
-                        continue
-                else:
+                try:
                     res = listener.func(self, **listener.kwargs)
+                except Exception as e:
+                    logger.error(f"监听器中发生错误: {repr(e)}", exc_info=True)
+                    continue
                 res_list.append(res)
 
     @async_task
