@@ -46,7 +46,7 @@ def init(logs_path: str = LOGS_PATH, logger_level: int = logging.INFO):
     coloredlogs.install(isatty=True, stream=sys.stdout, field_styles=log_field_styles, fmt=fmt, colors=log_colors)
 
     # 设置文件日志
-    logger_instance = logging.getLogger("murainbot")
+    logger_instance = logging.getLogger()
 
     logger_instance.setLevel(logger_level)
     coloredlogs.set_level(logger_level)
@@ -109,6 +109,8 @@ def get_logger(name: str | None = None):
                     logger_name = FRAMEWORK_LOGGER_NAME
                 elif module_name.startswith("Lib"):
                     logger_name = FRAMEWORK_LOGGER_NAME + module_name[3:]
+                elif module_name.startswith("plugins"):
+                    logger_name = FRAMEWORK_LOGGER_NAME + module_name
                 else:
                     logger_name = module_name
             else:
