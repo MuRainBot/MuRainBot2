@@ -110,7 +110,7 @@ def get_logger(name: str | None = None):
                 elif module_name.startswith("Lib"):
                     logger_name = FRAMEWORK_LOGGER_NAME + module_name[3:]
                 elif module_name.startswith("plugins"):
-                    logger_name = FRAMEWORK_LOGGER_NAME + module_name
+                    logger_name = FRAMEWORK_LOGGER_NAME + "." + module_name
                 else:
                     logger_name = module_name
             else:
