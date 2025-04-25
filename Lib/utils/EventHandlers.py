@@ -273,11 +273,12 @@ def _to_me(event_data: EventClassifier.MessageEvent):
     if not isinstance(event_data, EventClassifier.MessageEvent):
         logger.warning(f"event {event_data} is not a MessageEvent, cannot match to_me")
         return False
-    if isinstance(event_data, EventClassifier.PrivateMessageEvent):
+    if event_data.message_type == "private":
         return True
-    if isinstance(event_data, EventClassifier.GroupMessageEvent):
+    if event_data.message_type == "group":
         for rich in event_data.message.rich_array:
-            if isinstance(rich, QQRichText.At) and int(rich.data.get("qq")) == event_data.self_id:
+            if (isinstance(rich, QQRichText.At) and int(rich.data.get("qq")) ==
+                    ConfigManager.GlobalConfig().account.user_id):
                 return True
     return False
 
