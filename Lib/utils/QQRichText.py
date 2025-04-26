@@ -48,7 +48,7 @@ def cq_encode(text, in_cq: bool = False) -> str:
             replace("]", "&#93;")
 
 
-def cq_2_array(cq: str) -> list[dict[str, dict[str, Any]]]:
+def cq_2_array(cq: str) -> list[dict[str, dict[str, str]]]:
     """
     将CQCode格式的字符串转换为消息段数组。
 
@@ -56,72 +56,154 @@ def cq_2_array(cq: str) -> list[dict[str, dict[str, Any]]]:
         cq (str): CQCode字符串。
 
     Returns:
-        list[dict[str, dict[str, Any]]]: 解析后的消息段数组。
+        list[dict[str, dict[str, str]]]: 解析后的消息段数组。
+
+    Raises:
+        TypeError: 如果输入类型不是字符串。
+        ValueError: 如果解析过程中遇到格式错误，包含错误位置信息。
     """
     if not isinstance(cq, str):
         raise TypeError("cq_2_array: 输入类型错误")
 
-    cq_array = []  # 存储解析后的消息段
+    cq_array = []
     now_state = 0  # 当前解析状态
-    # 0: 不在CQ码内
-    # 1: 在CQ码的类型部分
-    # 2: 在CQ码的参数键部分
-    # 3: 在CQ码的参数值部分
+    # 0: 不在CQ码内 (初始/普通文本)
+    # 1: 在CQ码内，正在解析类型 (包括验证 [CQ: 前缀)
+    # 2: 在CQ码内，正在解析参数键 (key)
+    # 3: 在CQ码内，正在解析参数值 (value)
 
-    segment_data = {"text": ""}  # 用于存储当前解析的消息段
-    now_key = ""  # 当前解析的参数键
-    now_segment_type = ""  # 当前解析的CQ码类型
+    segment_data = {"text": ""}  # 存储当前普通文本段
+    current_cq_data = {}  # 存储当前 CQ 码的 data 部分
+    now_key = ""
+    now_value = ""  # 使用 now_value 暂存值，避免直接操作 current_cq_data[now_key]
+    now_segment_type = ""  # 存储当前 CQ 码的完整类型部分 (包括 CQ:) 或处理后的类型
+    cq_start_pos = -1  # 记录当前 CQ 码 '[' 的位置
 
-    for c in cq:
+    for i, c in enumerate(cq):
+        error_context = f"在字符 {i} ('{c}') 附近"
+        cq_error_context = f"在起始于字符 {cq_start_pos} 的 CQ 码中，{error_context}"
+
         if now_state == 0:  # 解析普通文本
-            if c == "[":  # 进入CQ码解析
-                now_state = 1
-                if len(segment_data["text"]):  # 先存储之前的普通文本
+            if cq_start_pos == -1:  # 文本块开始
+                cq_start_pos = i
+            if c == "[":
+                # 遇到可能的 CQ 码开头，先保存之前的文本
+                if len(segment_data["text"]):
                     cq_array.append({"type": "text", "data": {"text": cq_decode(segment_data["text"])}})
-                segment_data = {}  # 重置segment_data用于存储新的CQ码
+                    segment_data = {"text": ""}  # 重置文本段
+
+                # 记录起始位置，进入状态 1
+                cq_start_pos = i
+                now_state = 1
+                # 重置当前 CQ 码的临时变量
+                now_segment_type = ""  # 开始累积类型部分
+                current_cq_data = {}
+                now_key = ""
+                now_value = ""
+            elif c == "]":
+                raise ValueError(f"{error_context}: 文本块中包含非法字符: ']'")
             else:
                 segment_data["text"] += c  # 继续拼接普通文本
 
-        elif now_state == 1:  # 解析CQ码类型
+        elif now_state == 1:  # 解析类型 (包含 [CQ: 前缀)
             if c == ",":  # 类型解析结束，进入参数键解析
-                now_state = 2
-                now_segment_type = now_segment_type[3:]  # 移除CQ:前缀
-            else:
-                now_segment_type += c  # 继续拼接类型字符串
+                if not now_segment_type.startswith("CQ:"):
+                    raise ValueError(f"{cq_error_context}: 期望 'CQ:' 前缀，但得到 '{now_segment_type}'")
 
-        elif now_state == 2:  # 解析参数键
+                actual_type = now_segment_type[3:]
+                if not actual_type:
+                    raise ValueError(f"{cq_error_context}: CQ 码类型不能为空")
+
+                now_segment_type = actual_type  # 保存处理后的类型名
+                now_state = 2  # 进入参数键解析状态
+                now_key = ""  # 准备解析第一个键
+            elif c == "]":  # 类型解析结束，无参数 CQ 码结束
+                if not now_segment_type.startswith("CQ:"):
+                    # 如果不是 CQ: 开头，根据严格程度，可以报错或当作普通文本处理
+                    # 这里我们严格处理，既然进入了状态1，就必须是 CQ: 开头
+                    raise ValueError(f"{cq_error_context}: 期望 'CQ:' 前缀，但得到 '{now_segment_type}'")
+
+                actual_type = now_segment_type[3:]
+                if not actual_type:
+                    raise ValueError(f"{cq_error_context}: CQ 码类型不能为空")
+
+                # 存入无参数的 CQ 码段
+                cq_array.append({"type": actual_type, "data": {}})  # data 为空
+                now_state = 0  # 回到初始状态
+                cq_start_pos = -1  # 重置
+            elif c == '[':  # 类型名中不应包含未转义的 '['
+                raise ValueError(f"{cq_error_context}: CQ 码类型 '{now_segment_type}' 中包含非法字符 '['")
+            else:
+                # 继续拼接类型部分 (此时包含 CQ:)
+                now_segment_type += c
+
+        elif now_state == 2:  # 解析参数键 (key)
             if c == "=":  # 键名解析结束，进入值解析
-                now_state = 3
-                now_key = cq_decode(now_key, in_cq=True)  # 解码键名
-                if now_key not in segment_data:
-                    segment_data[now_key] = ""  # 初始化键值
-                else:
-                    raise ValueError("cq_2_array: CQ码键名称重复")
+                if not now_key:
+                    raise ValueError(f"{cq_error_context}: CQ 码参数键不能为空")
+
+                # 检查键名重复 (键名通常不解码，或按需解码)
+                # decoded_key = cq_decode(now_key, in_cq=True) # 如果键名需要解码
+                decoded_key = now_key  # 假设键名不解码
+                if decoded_key in current_cq_data:
+                    raise ValueError(f"{cq_error_context}: CQ 码参数键 '{decoded_key}' 重复")
+
+                now_key = decoded_key  # 保存解码后（或原始）的键名
+                now_state = 3  # 进入参数值解析状态
+                now_value = ""  # 准备解析值
+            elif c == "," or c == "]":  # 在键名后遇到逗号或方括号是错误的
+                raise ValueError(f"{cq_error_context}: 在参数键 '{now_key}' 后期望 '='，但遇到 '{c}'")
+            elif c == '[':  # 键名中不应包含未转义的 '[' (根据规范，& 和 , 也应转义，但这里简化检查)
+                raise ValueError(f"{cq_error_context}: CQ 码参数键 '{now_key}' 中包含非法字符 '['")
             else:
                 now_key += c  # 继续拼接键名
 
-        elif now_state == 3:  # 解析参数值
-            if c == "]":  # CQ码结束
-                now_state = 0
-                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)  # 解码值
-                cq_array.append({"type": now_segment_type, "data": segment_data})  # 存入解析结果
-                segment_data = {"text": ""}  # 重置segment_data
-                now_segment_type = ""  # 清空类型
-                now_key = ""  # 清空键名
-            elif c == ",":  # 进入下一个参数键解析
-                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)  # 解码值
-                now_state = 2
-                now_key = ""  # 清空键名，准备解析下一个键
+        elif now_state == 3:  # 解析参数值 (value)
+            if c == ",":  # 当前值结束，进入下一个键解析
+                # 解码当前值并存入
+                current_cq_data[now_key] = cq_decode(now_value, in_cq=True)
+                now_state = 2  # 回到解析键的状态
+                now_key = ""  # 重置键，准备解析下一个
+                # now_value 不需要在这里重置，进入状态 2 后，遇到 = 进入状态 3 时会重置
+            elif c == "]":  # 当前值结束，整个 CQ 码结束
+                # 解码当前值并存入
+                current_cq_data[now_key] = cq_decode(now_value, in_cq=True)
+                # 存入带参数的 CQ 码段
+                cq_array.append({"type": now_segment_type, "data": current_cq_data})
+                now_state = 0  # 回到初始状态
+                cq_start_pos = -1  # 重置
+            elif c == '[':  # 值中不应出现未转义的 '['
+                raise ValueError(f"{cq_error_context}: CQ 码参数值 '{now_value}' 中包含非法字符 '['")
             else:
-                segment_data[now_key] += c  # 继续拼接参数值
+                now_value += c  # 继续拼接值 (转义由 cq_decode 处理)
 
-    if "text" in segment_data and len(segment_data["text"]):  # 处理末尾可能存在的文本内容
+    # --- 循环结束后检查 ---
+    final_error_context = f"在字符串末尾"
+    if now_state != 0:
+        if cq_start_pos != -1:
+            # 根据当前状态给出更具体的错误提示
+            if now_state == 1:
+                error_detail = f"类型部分 '{now_segment_type}' 未完成"
+            elif now_state == 2:
+                error_detail = f"参数键 '{now_key}' 未完成或缺少 '='"
+            elif now_state == 3:
+                error_detail = f"参数值 '{now_value}' 未结束"
+            else:  # 理论上不会有其他状态
+                error_detail = f"解析停留在未知状态 {now_state}"
+            raise ValueError(
+                f"cq_2_array: {final_error_context}，起始于字符 {cq_start_pos} 的 CQ 码未正确结束 ({error_detail})")
+        else:
+            # 如果 cq_start_pos 是 -1 但状态不是 0，说明逻辑可能出错了
+            raise ValueError(f"cq_2_array: {final_error_context}，解析器状态异常 ({now_state}) 但未记录 CQ 码起始位置")
+
+    # 处理末尾可能剩余的普通文本
+    if len(segment_data["text"]):
         cq_array.append({"type": "text", "data": {"text": cq_decode(segment_data["text"])}})
 
     return cq_array
 
 
-def array_2_cq(cq_array: list | dict) -> str:
+def array_2_cq(cq_array: list[dict[str, dict[str, str]]] | dict[str, dict[str, str]]) -> str:
     """
     array消息段转CQCode
     Args:
@@ -139,17 +221,37 @@ def array_2_cq(cq_array: list | dict) -> str:
     # 将json形式的富文本转换为CQ码
     text = ""
     for segment in cq_array:
-        # 纯文本
-        if segment.get("type") == "text":
-            text += cq_encode(segment.get("data").get("text"))
+        segment_type = segment.get("type")
+        if not isinstance(segment_type, str):
+            # 或者根据需求跳过这个 segment
+            raise ValueError(f"array_2_cq: 消息段缺少有效的 'type': {segment}")
+
+        # 文本
+        if segment_type == "text":
+            data = segment.get("data")
+            if not isinstance(data, dict):
+                raise ValueError(f"array_2_cq: 'text' 类型的消息段缺少有效的 'data' 字典: {segment}")
+            text_content = data.get("text")
+            if not isinstance(text_content, str):
+                raise ValueError(f"array_2_cq: 'text' 类型的消息段 'data' 字典缺少有效的 'text' 字符串: {segment}")
+            text += cq_encode(text_content)
         # CQ码
         else:
-            if segment.get("data"):  # 特判
-                text += f"[CQ:{segment.get('type')}," + ",".join(
-                    [cq_encode(x, in_cq=True) + "=" + cq_encode(segment.get("data")[x], in_cq=True)
-                     for x in segment.get("data").keys()]) + "]"
-            else:
-                text += f"[CQ:{segment.get('type')}]"
+            cq_type_str = f"[CQ:{segment_type}"
+            data = segment.get("data")
+            if isinstance(data, dict) and data:  # data 存在且是包含内容的字典
+                params = []
+                for key, value in data.items():
+                    if not (isinstance(key, str) and isinstance(value, str)):  # 确保键和值都为字符串
+                        raise ValueError(
+                            f"array_2_cq: '{segment_type}' 类型的消息段 'data' 字典的键值对中有无效的键或值: {segment}")
+                    params.append(f"{cq_encode(key, in_cq=True)}={cq_encode(value, in_cq=True)}")
+                if params:
+                    text += cq_type_str + "," + ",".join(params) + "]"
+                else:  # 如果 data 非空但过滤后 params 为空（例如 data 里全是 None 值）
+                    text += cq_type_str + "]"
+            else:  # data 不存在、为 None 或为空字典 {}
+                text += cq_type_str + "]"
     return text
 
 
@@ -208,7 +310,10 @@ class Segment(metaclass=SegmentMeta):
     def __init__(self, cq):
         self.cq = cq
         if isinstance(cq, str):
-            self.array = cq_2_array(cq)[0]
+            self.array = cq_2_array(cq)
+            if len(self.array) != 1:
+                raise ValueError("cq_2_array: 输入 CQ 码格式错误")
+            self.array = self.array[0]
             self.type, self.data = list(self.array.values())
         elif isinstance(cq, dict):
             self.array = cq
@@ -219,11 +324,9 @@ class Segment(metaclass=SegmentMeta):
                 if isinstance(cq, segment):
                     self.array = cq.array
                     self.cq = str(self.cq)
-                    # print(self.array.values(), list(self.array.values()))
                     self.type, self.data = list(self.array.values())
                     break
             else:
-                # print(cq, str(cq), type(cq))
                 raise TypeError("Segment: 输入类型错误")
 
     def __str__(self):
@@ -1010,7 +1113,8 @@ class QQRichText:
     QQ富文本
     """
 
-    def __init__(self, *rich: str | dict | list | tuple | Segment):
+    def __init__(self, *rich: str | dict[str, dict[str, str]] | list[dict[str, dict[str, str]]]
+                                  | tuple[dict[str, dict[str, str]]] | Segment):
         """
         Args:
             *rich: 富文本内容，可为 str、dict、list、tuple、Segment、QQRichText
@@ -1193,3 +1297,37 @@ if __name__ == "__main__":
     rich = QQRichText(rich_array)
     print(rich)
     print(rich.get_array())
+
+    print("--- 正确示例 ---")
+    print(cq_2_array("你好[CQ:face,id=123]世界[CQ:image,file=abc.jpg,url=http://a.com/b?c=1&d=2]"))
+    print(cq_2_array("[CQ:shake]"))
+    print(cq_2_array("只有文本"))
+    print(cq_2_array("[CQ:at,qq=123][CQ:at,qq=456]"))
+
+    print("\n--- 错误示例 ---")
+    # 触发不同类型的 ValueError
+    error_inputs = [
+        "文本[CQ:face,id=123",  # 未闭合 (类型 3 结束)
+        "文本[CQ:face,id]",  # 缺少=
+        "文本[CQ:,id=123]",  # 类型为空
+        "文本[NotCQ:face,id=123]",  # 非 CQ: 开头
+        "文本[:face,id=123]",  # 非 CQ: 开头 (更具体)
+        "文本[CQ:face,id=123,id=456]",  # 重复键
+        "文本[CQ:face,,id=123]",  # 多余逗号 (会导致空键名错误)
+        "文本[CQ:fa[ce,id=123]",  # 类型中非法字符 '['
+        "文本[CQ:face,ke[y=value]",  # 键中非法字符 '['
+        "文本[CQ:face,key=val]ue]",  # 文本中非法字符 ']'
+        "[",  # 未闭合 (类型 1 结束)
+        "[CQ",  # 未闭合 (类型 1 结束)
+        "[CQ:",  # 未闭合 (类型 1 结束)
+        "[CQ:type,",  # 未闭合 (类型 2 结束)
+        "[CQ:type,key",  # 未闭合 (类型 2 结束)
+        "[CQ:type,key=",  # 未闭合 (类型 3 结束)
+        "[CQ:type,key=value"  # 未闭合 (类型 2 结束)
+    ]
+    for err_cq in error_inputs:
+        try:
+            print(f"\nTesting: {err_cq}")
+            cq_2_array(err_cq)
+        except ValueError as e:
+            print(f"捕获到错误: {e}")
