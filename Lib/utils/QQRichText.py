@@ -101,18 +101,18 @@ def cq_2_array(cq: str) -> list[dict[str, dict[str, str]]]:
                 now_key = ""
                 now_value = ""
             elif c == "]":
-                raise ValueError(f"{error_context}: 文本块中包含非法字符: ']'")
+                raise ValueError(f"cq_2_array: {error_context}: 文本块中包含非法字符: ']'")
             else:
                 segment_data["text"] += c  # 继续拼接普通文本
 
         elif now_state == 1:  # 解析类型 (包含 [CQ: 前缀)
             if c == ",":  # 类型解析结束，进入参数键解析
                 if not now_segment_type.startswith("CQ:"):
-                    raise ValueError(f"{cq_error_context}: 期望 'CQ:' 前缀，但得到 '{now_segment_type}'")
+                    raise ValueError(f"cq_2_array: {cq_error_context}: 期望 'CQ:' 前缀，但得到 '{now_segment_type}'")
 
                 actual_type = now_segment_type[3:]
                 if not actual_type:
-                    raise ValueError(f"{cq_error_context}: CQ 码类型不能为空")
+                    raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码类型不能为空")
 
                 now_segment_type = actual_type  # 保存处理后的类型名
                 now_state = 2  # 进入参数键解析状态
@@ -121,18 +121,18 @@ def cq_2_array(cq: str) -> list[dict[str, dict[str, str]]]:
                 if not now_segment_type.startswith("CQ:"):
                     # 如果不是 CQ: 开头，根据严格程度，可以报错或当作普通文本处理
                     # 这里我们严格处理，既然进入了状态1，就必须是 CQ: 开头
-                    raise ValueError(f"{cq_error_context}: 期望 'CQ:' 前缀，但得到 '{now_segment_type}'")
+                    raise ValueError(f"cq_2_array: {cq_error_context}: 期望 'CQ:' 前缀，但得到 '{now_segment_type}'")
 
                 actual_type = now_segment_type[3:]
                 if not actual_type:
-                    raise ValueError(f"{cq_error_context}: CQ 码类型不能为空")
+                    raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码类型不能为空")
 
                 # 存入无参数的 CQ 码段
                 cq_array.append({"type": actual_type, "data": {}})  # data 为空
                 now_state = 0  # 回到初始状态
                 cq_start_pos = -1  # 重置
             elif c == '[':  # 类型名中不应包含未转义的 '['
-                raise ValueError(f"{cq_error_context}: CQ 码类型 '{now_segment_type}' 中包含非法字符 '['")
+                raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码类型 '{now_segment_type}' 中包含非法字符 '['")
             else:
                 # 继续拼接类型部分 (此时包含 CQ:)
                 now_segment_type += c
@@ -140,21 +140,21 @@ def cq_2_array(cq: str) -> list[dict[str, dict[str, str]]]:
         elif now_state == 2:  # 解析参数键 (key)
             if c == "=":  # 键名解析结束，进入值解析
                 if not now_key:
-                    raise ValueError(f"{cq_error_context}: CQ 码参数键不能为空")
+                    raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码参数键不能为空")
 
                 # 检查键名重复 (键名通常不解码，或按需解码)
                 # decoded_key = cq_decode(now_key, in_cq=True) # 如果键名需要解码
                 decoded_key = now_key  # 假设键名不解码
                 if decoded_key in current_cq_data:
-                    raise ValueError(f"{cq_error_context}: CQ 码参数键 '{decoded_key}' 重复")
+                    raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码参数键 '{decoded_key}' 重复")
 
                 now_key = decoded_key  # 保存解码后（或原始）的键名
                 now_state = 3  # 进入参数值解析状态
                 now_value = ""  # 准备解析值
             elif c == "," or c == "]":  # 在键名后遇到逗号或方括号是错误的
-                raise ValueError(f"{cq_error_context}: 在参数键 '{now_key}' 后期望 '='，但遇到 '{c}'")
+                raise ValueError(f"cq_2_array: {cq_error_context}: 在参数键 '{now_key}' 后期望 '='，但遇到 '{c}'")
             elif c == '[':  # 键名中不应包含未转义的 '[' (根据规范，& 和 , 也应转义，但这里简化检查)
-                raise ValueError(f"{cq_error_context}: CQ 码参数键 '{now_key}' 中包含非法字符 '['")
+                raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码参数键 '{now_key}' 中包含非法字符 '['")
             else:
                 now_key += c  # 继续拼接键名
 
@@ -173,7 +173,7 @@ def cq_2_array(cq: str) -> list[dict[str, dict[str, str]]]:
                 now_state = 0  # 回到初始状态
                 cq_start_pos = -1  # 重置
             elif c == '[':  # 值中不应出现未转义的 '['
-                raise ValueError(f"{cq_error_context}: CQ 码参数值 '{now_value}' 中包含非法字符 '['")
+                raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码参数值 '{now_value}' 中包含非法字符 '['")
             else:
                 now_value += c  # 继续拼接值 (转义由 cq_decode 处理)
 
@@ -242,9 +242,18 @@ def array_2_cq(cq_array: list[dict[str, dict[str, str]]] | dict[str, dict[str, s
             if isinstance(data, dict) and data:  # data 存在且是包含内容的字典
                 params = []
                 for key, value in data.items():
-                    if not (isinstance(key, str) and isinstance(value, str)):  # 确保键和值都为字符串
-                        raise ValueError(
-                            f"array_2_cq: '{segment_type}' 类型的消息段 'data' 字典的键值对中有无效的键或值: {segment}")
+                    if not isinstance(key, str):
+                        raise ValueError(f"array_2_cq: '{segment_type}' 类型的消息段 'data' 字典的键 '{key}' 不是字符串")
+                    if value is None:
+                        continue
+                    if isinstance(value, bool):
+                        value = "1" if value else "0"
+                    if not isinstance(value, str):
+                        try:
+                            value = str(value)
+                        except Exception as e:
+                            raise ValueError(f"array_2_cq: '{segment_type}' 类型的消息段 "
+                                             f"'data' 字典的键 '{key}' 的值 '{value}' 无法被转换: {repr(e)}")
                     params.append(f"{cq_encode(key, in_cq=True)}={cq_encode(value, in_cq=True)}")
                 if params:
                     text += cq_type_str + "," + ",".join(params) + "]"
