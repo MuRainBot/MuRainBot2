@@ -45,23 +45,27 @@ def get_help_text():
 
 rule = EventHandlers.CommandRule("help", aliases={"帮助"})
 
-matcher = EventHandlers.on_event(EventClassifier.GroupMessageEvent, priority=0, rules=[rule])
+matcher = EventHandlers.on_event(EventClassifier.MessageEvent, priority=0, rules=[rule])
 
 
 @matcher.register_handler()
-def on_help(event_data):
+def on_help(event_data: EventClassifier.MessageEvent):
     """
     帮助命令处理
     """
-    if event_data.message == "help":
+    cmd = str(event_data.message).strip().split(" ", 1)
+    if len(cmd) == 1:
         Actions.SendMsg(
             message=QQRichText.QQRichText(
                 QQRichText.Reply(event_data["message_id"]),
-                get_help_text()
-            ), group_id=event_data["group_id"]
+                QQRichText.Text(get_help_text())
+            ),
+            **{"group_id": event_data["group_id"]}
+            if event_data["message_type"] == "group" else
+            {"user_id": event_data["user_id"]}
         ).call()
     else:
-        plugin_name = str(event_data.message).split(" ", 1)[1].lower()
+        plugin_name = cmd[1].lower()
         for plugin in PluginManager.plugins:
             try:
                 plugin_info = plugin["info"]
@@ -71,8 +75,11 @@ def on_help(event_data):
                     Actions.SendMsg(
                         message=QQRichText.QQRichText(
                             QQRichText.Reply(event_data["message_id"]),
-                            plugin_info.HELP_MSG + "\n----------\n发送/help以获取全部的插件帮助信息"
-                        ), group_id=event_data["group_id"]
+                            QQRichText.Text(plugin_info.HELP_MSG + "\n----------\n发送/help以获取全部的插件帮助信息")
+                        ),
+                        **{"group_id": event_data["group_id"]}
+                        if event_data["message_type"] == "group" else
+                        {"user_id": event_data["user_id"]}
                     ).call()
                     return
             except Exception as e:
@@ -82,6 +89,9 @@ def on_help(event_data):
             Actions.SendMsg(
                 message=QQRichText.QQRichText(
                     QQRichText.Reply(event_data["message_id"]),
-                    "没有找到此插件，请检查是否有拼写错误"
-                ), group_id=event_data["group_id"]
+                    QQRichText.Text("没有找到此插件，请检查是否有拼写错误")
+                ),
+                **{"group_id": event_data["group_id"]}
+                if event_data["message_type"] == "group" else
+                {"user_id": event_data["user_id"]}
             ).call()

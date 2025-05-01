@@ -1122,8 +1122,11 @@ class QQRichText:
     QQ富文本
     """
 
-    def __init__(self, *rich: str | dict[str, dict[str, str]] | list[dict[str, dict[str, str]]]
-                                  | tuple[dict[str, dict[str, str]]] | Segment):
+    def __init__(
+            self,
+            *rich: str | dict[str, dict[str, str]] | list[dict[str, dict[str, str]]] | tuple[
+                dict[str, dict[str, str]]] | Segment
+    ):
         """
         Args:
             *rich: 富文本内容，可为 str、dict、list、tuple、Segment、QQRichText
