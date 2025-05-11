@@ -1,9 +1,10 @@
 """
 QQ富文本
 """
+from __future__ import annotations
+
 import inspect
 import json
-from typing import Any
 from urllib.parse import urlparse
 
 from Lib.common import save_exc_dump
@@ -243,7 +244,8 @@ def array_2_cq(cq_array: list[dict[str, dict[str, str]]] | dict[str, dict[str, s
                 params = []
                 for key, value in data.items():
                     if not isinstance(key, str):
-                        raise ValueError(f"array_2_cq: '{segment_type}' 类型的消息段 'data' 字典的键 '{key}' 不是字符串")
+                        raise ValueError(
+                            f"array_2_cq: '{segment_type}' 类型的消息段 'data' 字典的键 '{key}' 不是字符串")
                     if value is None:
                         continue
                     if isinstance(value, bool):
@@ -316,27 +318,24 @@ class Segment(metaclass=SegmentMeta):
     """
     segment_type = None
 
-    def __init__(self, cq):
+    def __init__(self, cq: str | dict[str, dict[str, str]] | "Segment"):
         self.cq = cq
         if isinstance(cq, str):
             self.array = cq_2_array(cq)
             if len(self.array) != 1:
                 raise ValueError("cq_2_array: 输入 CQ 码格式错误")
             self.array = self.array[0]
-            self.type, self.data = list(self.array.values())
         elif isinstance(cq, dict):
             self.array = cq
-            self.cq = array_2_cq(self.array)
-            self.type, self.data = list(self.array.values())
         else:
             for segment in segments:
                 if isinstance(cq, segment):
                     self.array = cq.array
-                    self.cq = str(self.cq)
-                    self.type, self.data = list(self.array.values())
                     break
             else:
                 raise TypeError("Segment: 输入类型错误")
+        self.type = self.array["type"]
+        self.data = self.array.get("data", {})
 
     def __str__(self):
         return self.__repr__()
@@ -452,25 +451,25 @@ class Face(Segment):
     """
     segment_type = "face"
 
-    def __init__(self, face_id):
+    def __init__(self, id_):
         """
         Args:
-            face_id: 表情id
+            id_: 表情id
         """
-        self.face_id = face_id
-        super().__init__({"type": "face", "data": {"id": str(face_id)}})
+        self.id_ = id_
+        super().__init__({"type": "face", "data": {"id": str(id_)}})
 
-    def set_id(self, face_id):
+    def set_id(self, id_):
         """
         设置表情id
         Args:
-            face_id: 表情id
+            id_: 表情id
         """
-        self.face_id = face_id
-        self.array["data"]["id"] = str(face_id)
+        self.id_ = id_
+        self.array["data"]["id"] = str(id_)
 
     def render(self, group_id: int | None = None):
-        return "[表情: %s]" % self.face_id
+        return f"[表情: {self.id_}]"
 
 
 class At(Segment):
@@ -599,14 +598,14 @@ class Rps(Segment):
     segment_type = "rps"
 
     def __init__(self):
-        super().__init__({"type": "rps"})
+        super().__init__({"type": "rps", "data": {}})
 
 
 class Dice(Segment):
     segment_type = "dice"
 
     def __init__(self):
-        super().__init__({"type": "dice"})
+        super().__init__({"type": "dice", "data": {}})
 
 
 class Shake(Segment):
@@ -617,7 +616,7 @@ class Shake(Segment):
     segment_type = "shake"
 
     def __init__(self):
-        super().__init__({"type": "shake"})
+        super().__init__({"type": "shake", "data": {}})
 
 
 class Poke(Segment):
@@ -626,33 +625,33 @@ class Poke(Segment):
     """
     segment_type = "poke"
 
-    def __init__(self, type_, poke_id):
+    def __init__(self, type_, id_):
         """
         Args:
             type_: 见https://github.com/botuniverse/onebot-11/blob/master/message/segment.md#%E6%88%B3%E4%B8%80%E6%88%B3
-            poke_id: 同上
+            id_: 同上
         """
         self.type = type_
-        self.poke_id = poke_id
-        super().__init__({"type": "poke", "data": {"type": str(self.type)}, "id": str(self.poke_id)})
+        self.id_ = id_
+        super().__init__({"type": "poke", "data": {"type": str(self.type)}, "id": str(self.id_)})
 
-    def set_type(self, qq_type):
+    def set_type(self, type_):
         """
         设置戳一戳类型
         Args:
-            qq_type: qq类型
+            type_: 见https://github.com/botuniverse/onebot-11/blob/master/message/segment.md#%E6%88%B3%E4%B8%80%E6%88%B3
         """
-        self.type = qq_type
-        self.array["data"]["type"] = str(qq_type)
+        self.type = type_
+        self.array["data"]["type"] = str(type_)
 
-    def set_id(self, poke_id):
+    def set_id(self, id_):
         """
         设置戳一戳id
         Args:
-            poke_id: 戳一戳id
+            id_: 戳一戳id
         """
-        self.poke_id = poke_id
-        self.array["data"]["id"] = str(poke_id)
+        self.id_ = id_
+        self.array["data"]["id"] = str(id_)
 
     def render(self, group_id: int | None = None):
         return f"[戳一戳: {self.type}]"
@@ -847,6 +846,7 @@ class Node(Segment):
     """
     合并转发消息节点
     接收时，此消息段不会直接出现在消息事件的 message 中，需通过 get_forward_msg API 获取。
+    这是最阴间的消息段之一，tm的Onebot协议，各种转换的细节根本就没定义清楚，感觉CQ码的支持就像后加的，而且纯纯草台班子
     """
     segment_type = "node"
 
@@ -900,6 +900,14 @@ class Node(Segment):
             return f"[合并转发节点: {self.name}({self.user_id}): {self.message}]"
         else:
             return f"[合并转发节点: {self.message_id}]"
+
+    def __repr__(self):
+        """
+        去tm的CQ码
+        Raises:
+            NotImplementedError: 暂不支持此方法
+        """
+        raise NotImplementedError("不支持将Node转成CQ码")
 
 
 class Music(Segment):
@@ -1017,25 +1025,25 @@ class Reply(Segment):
     """
     segment_type = "reply"
 
-    def __init__(self, message_id):
+    def __init__(self, id_):
         """
         Args:
-            message_id: 回复消息 ID
+            id_: 回复消息 ID
         """
-        self.message_id = message_id
-        super().__init__({"type": "reply", "data": {"id": str(self.message_id)}})
+        self.id_ = id_
+        super().__init__({"type": "reply", "data": {"id": str(self.id_)}})
 
-    def set_message_id(self, message_id):
+    def set_id(self, id_):
         """
         设置消息 ID
         Args:
-            message_id: 消息 ID
+            id_: 消息 ID
         """
-        self.message_id = message_id
-        self.array["data"]["id"] = str(self.message_id)
+        self.id_ = id_
+        self.array["data"]["id"] = str(self.id_)
 
     def render(self, group_id: int | None = None):
-        return f"[回复: {self.message_id}]"
+        return f"[回复: {self.id_}]"
 
 
 class Forward(Segment):
@@ -1044,25 +1052,25 @@ class Forward(Segment):
     """
     segment_type = "forward"
 
-    def __init__(self, forward_id):
+    def __init__(self, id_):
         """
         Args:
-            forward_id: 合并转发消息 ID
+            id_: 合并转发消息 ID
         """
-        self.forward_id = forward_id
-        super().__init__({"type": "forward", "data": {"id": str(self.forward_id)}})
+        self.id_ = id_
+        super().__init__({"type": "forward", "data": {"id": str(self.id_)}})
 
-    def set_forward_id(self, forward_id):
+    def set_id(self, id_):
         """
-        设置合并转发消息 ID
+        设置合并转发 ID
         Args:
-            forward_id: 合并转发消息 ID
+            id_: 合并转发消息 ID
         """
-        self.forward_id = forward_id
-        self.array["data"]["id"] = str(self.forward_id)
+        self.id_ = id_
+        self.array["data"]["id"] = str(self.id_)
 
     def render(self, group_id: int | None = None):
-        return f"[合并转发: {self.forward_id}]"
+        return f"[合并转发: {self.id_}]"
 
 
 class XML(Segment):
@@ -1124,8 +1132,8 @@ class QQRichText:
 
     def __init__(
             self,
-            *rich: str | dict[str, dict[str, str]] | list[dict[str, dict[str, str]]] | tuple[
-                dict[str, dict[str, str]]] | Segment
+            *rich: dict[str, dict[str, str]] | str | Segment | "QQRichText" | list[
+                dict[str, dict[str, str]] | str | Segment | "QQRichText"]
     ):
         """
         Args:
@@ -1134,7 +1142,8 @@ class QQRichText:
 
         # 特判
         self.rich_array: list[Segment] = []
-        if len(rich) == 1:
+
+        if len(rich) == 1 and isinstance(rich[0], (list, tuple)):
             rich = rich[0]
 
         # 识别输入的是CQCode or json形式的富文本
@@ -1186,15 +1195,7 @@ class QQRichText:
                         if param in rich[i]["data"]:
                             kwargs[param] = rich[i]["data"][param]
                         else:
-                            if rich[i]["type"] == "reply" and param == "message_id":
-                                kwargs[param] = rich[i]["data"].get("id")
-                            elif rich[i]["type"] == "face" and param == "face_id":
-                                kwargs[param] = rich[i]["data"].get("id")
-                            elif rich[i]["type"] == "forward" and param == "forward_id":
-                                kwargs[param] = rich[i]["data"].get("id")
-                            elif rich[i]["type"] == "poke" and param == "poke_id":
-                                kwargs[param] = rich[i]["data"].get("id")
-                            elif param == "id_":
+                            if param == "id_":
                                 kwargs[param] = rich[i]["data"].get("id")
                             elif param == "type_":
                                 kwargs[param] = rich[i]["data"].get("type")
@@ -1233,7 +1234,7 @@ class QQRichText:
         return text
 
     def __str__(self):
-        self.rich_string = array_2_cq(self.rich_array)
+        self.rich_string = array_2_cq(self.get_array())
         return self.rich_string
 
     def __repr__(self):
@@ -1260,9 +1261,9 @@ class QQRichText:
             except (TypeError, AttributeError):
                 return False
 
-    def get_array(self):
+    def get_array(self) -> list[dict[str, dict[str, str]]]:
         """
-        获取rich_array（非抽象类，可用于API调用等）
+        获取rich_array的纯数组形式（用于序列化）
         Returns:
             rich_array
         """
@@ -1301,7 +1302,7 @@ if __name__ == "__main__":
     print(rich)
     print(rich.render())
 
-    print(QQRichText(At(114514)))
+    print(QQRichText(At(114514), At(1919810), "114514", Reply(133).array))
     print(Segment(At(1919810)))
     print(QQRichText([{"type": "text", "data": {"text": "1919810"}}]))
     print(QQRichText().add(At(114514)).add(Text("我吃柠檬")) + QQRichText(At(1919810)).rich_array)
