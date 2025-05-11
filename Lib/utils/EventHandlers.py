@@ -27,6 +27,16 @@ class Rule:
         """
         pass
 
+    def __and__(self, other: "Rule"):
+        if not isinstance(other, Rule):
+            raise TypeError("other must be a Rule")
+        return AllRule(self, other)
+
+    def __or__(self, other: "Rule"):
+        if not isinstance(other, Rule):
+            raise TypeError("other must be a Rule")
+        return AnyRule(self, other)
+
 
 class AnyRule(Rule):
     """
