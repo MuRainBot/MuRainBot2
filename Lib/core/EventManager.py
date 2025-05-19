@@ -7,7 +7,9 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 from Lib.core.ThreadPool import async_task
+from Lib.core import ConfigManager
 from Lib.utils import Logger
+from Lib.common import save_exc_dump
 
 logger = Logger.get_logger()
 
@@ -37,7 +39,13 @@ class Hook(_Event):
                 try:
                     res = listener.func(self, **listener.kwargs)
                 except Exception as e:
-                    logger.error(f"监听器中发生错误: {repr(e)}", exc_info=True)
+                    if ConfigManager.GlobalConfig().debug.save_dump:
+                        dump_path = save_exc_dump(f"监听器中发生错误")
+                    else:
+                        dump_path = None
+                    logger.error(f"监听器中发生错误: {repr(e)}"
+                                 f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                                 exc_info=True)
                     continue
                 if res is True:
                     return True
@@ -144,7 +152,13 @@ class Event(_Event):
                 try:
                     res = listener.func(self, **listener.kwargs)
                 except Exception as e:
-                    logger.error(f"监听器中发生错误: {repr(e)}", exc_info=True)
+                    if ConfigManager.GlobalConfig().debug.save_dump:
+                        dump_path = save_exc_dump(f"监听器中发生错误")
+                    else:
+                        dump_path = None
+                    logger.error(f"监听器中发生错误: {repr(e)}"
+                                 f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                                 exc_info=True)
                     continue
                 res_list.append(res)
 
