@@ -206,7 +206,7 @@ class CommandRule(Rule):
         if (
                 len(segments) > 0 and
                 isinstance(segments[0], QQRichText.At) and
-                int(segments[0].data.get("qq")) == event_data.self_id
+                str(segments[0].data.get("qq")) == str(event_data.self_id)
         ):
             segments = segments[1:]
             is_at = True
@@ -287,8 +287,8 @@ def _to_me(event_data: EventClassifier.MessageEvent):
         return True
     if event_data.message_type == "group":
         for rich in event_data.message.rich_array:
-            if (isinstance(rich, QQRichText.At) and int(rich.data.get("qq")) ==
-                    ConfigManager.GlobalConfig().account.user_id):
+            if (isinstance(rich, QQRichText.At) and str(rich.data.get("qq")) ==
+                    str(ConfigManager.GlobalConfig().account.user_id)):
                 return True
     return False
 
