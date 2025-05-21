@@ -1157,7 +1157,7 @@ class QQRichText:
             elif isinstance(item, str):
                 array += cq_2_array(item)
             elif isinstance(item, QQRichText):
-                array += rich.rich_array
+                array += item.rich_array
             else:
                 for segment in segments:
                     if isinstance(item, segment):
@@ -1283,6 +1283,8 @@ if __name__ == "__main__":
     print(rich.get_array())
     print(rich)
     print(rich.render())
+
+    print(QQRichText(rich))
 
     print(QQRichText(At(114514), At(1919810), "114514", Reply(133).array))
     print(Segment(At(1919810)))
