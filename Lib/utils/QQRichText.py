@@ -1150,40 +1150,22 @@ class QQRichText:
         # 如果输入的是CQCode，则转换为json形式的富文本
 
         # 处理CQCode
-        if isinstance(rich, str):
-            rich_string = rich
-            rich = cq_2_array(rich_string)
-
-        elif isinstance(rich, dict):
-            rich = [rich]
-        elif isinstance(rich, (list, tuple)):
-            array = []
-            for item in rich:
-                if isinstance(item, dict):
-                    array.append(item)
-                elif isinstance(item, str):
-                    array += cq_2_array(item)
-                else:
-                    for segment in segments:
-                        if isinstance(item, segment):
-                            array.append(item.array)
-                            break
-                    else:
-                        if isinstance(rich, QQRichText):
-                            array += rich.rich_array
-                        else:
-                            raise TypeError("QQRichText: 输入类型错误")
-            rich = array
-        else:
-            for segment in segments:
-                if isinstance(rich, segment):
-                    rich = [rich.array]
-                    break
+        array = []
+        for item in rich:
+            if isinstance(item, dict):
+                array.append(item)
+            elif isinstance(item, str):
+                array += cq_2_array(item)
+            elif isinstance(item, QQRichText):
+                array += rich.rich_array
             else:
-                if isinstance(rich, QQRichText):
-                    rich = rich.rich_array
+                for segment in segments:
+                    if isinstance(item, segment):
+                        array.append(item.array)
+                        break
                 else:
                     raise TypeError("QQRichText: 输入类型错误")
+        rich = array
 
         # 将rich转换为的Segment
         for i in range(len(rich)):
