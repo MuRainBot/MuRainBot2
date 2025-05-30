@@ -72,9 +72,9 @@ if __name__ == '__main__':
     banner_start_color = (14, 190, 255)
     banner_end_color = (255, 66, 179)
     banner = BANNER.split("\n")
+    color_banner = ""
     # 输出banner
     for i in range(len(banner)):
-        color_banner = ""
         for j in range(len(banner[i])):
             color_banner += color_text(
                 banner[i][j],
@@ -84,13 +84,13 @@ if __name__ == '__main__':
                     ((j / (len(banner[i]) - 1) + i / (len(banner) - 1)) / 2)
                 )
             )
-        print(color_banner, flush=True)
-        time.sleep(0.05)
+        color_banner += "\n"
+
+    print(color_banner.strip())
 
     # 输出项目链接
     for c in color_text(BANNER_LINK, get_gradient(banner_start_color, banner_end_color, 0.5)):
-        print(c, end="", flush=True)
-        time.sleep(0.02)
+        print(c, end="")
 
     wait_str = color_text("正在加载 Lib, 首次启动可能需要几秒钟，请稍等...", banner_start_color)
     print("\n" + wait_str, end="")

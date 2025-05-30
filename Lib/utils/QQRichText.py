@@ -1,14 +1,14 @@
 """
 QQ富文本
 """
+from __future__ import annotations
+
 import inspect
 import json
-import traceback
-from typing import Any
 from urllib.parse import urlparse
 
-from Lib.constants import *
 from Lib.common import save_exc_dump
+from Lib.constants import *
 from Lib.core import ConfigManager
 from Lib.utils import QQDataCacher, Logger
 
@@ -49,7 +49,7 @@ def cq_encode(text, in_cq: bool = False) -> str:
             replace("]", "&#93;")
 
 
-def cq_2_array(cq: str) -> list[dict[str, dict[str, Any]]]:
+def cq_2_array(cq: str) -> list[dict[str, dict[str, str]]]:
     """
     将CQCode格式的字符串转换为消息段数组。
 
@@ -57,72 +57,154 @@ def cq_2_array(cq: str) -> list[dict[str, dict[str, Any]]]:
         cq (str): CQCode字符串。
 
     Returns:
-        list[dict[str, dict[str, Any]]]: 解析后的消息段数组。
+        list[dict[str, dict[str, str]]]: 解析后的消息段数组。
+
+    Raises:
+        TypeError: 如果输入类型不是字符串。
+        ValueError: 如果解析过程中遇到格式错误，包含错误位置信息。
     """
     if not isinstance(cq, str):
         raise TypeError("cq_2_array: 输入类型错误")
 
-    cq_array = []  # 存储解析后的消息段
+    cq_array = []
     now_state = 0  # 当前解析状态
-    # 0: 不在CQ码内
-    # 1: 在CQ码的类型部分
-    # 2: 在CQ码的参数键部分
-    # 3: 在CQ码的参数值部分
+    # 0: 不在CQ码内 (初始/普通文本)
+    # 1: 在CQ码内，正在解析类型 (包括验证 [CQ: 前缀)
+    # 2: 在CQ码内，正在解析参数键 (key)
+    # 3: 在CQ码内，正在解析参数值 (value)
 
-    segment_data = {"text": ""}  # 用于存储当前解析的消息段
-    now_key = ""  # 当前解析的参数键
-    now_segment_type = ""  # 当前解析的CQ码类型
+    segment_data = {"text": ""}  # 存储当前普通文本段
+    current_cq_data = {}  # 存储当前 CQ 码的 data 部分
+    now_key = ""
+    now_value = ""  # 使用 now_value 暂存值，避免直接操作 current_cq_data[now_key]
+    now_segment_type = ""  # 存储当前 CQ 码的完整类型部分 (包括 CQ:) 或处理后的类型
+    cq_start_pos = -1  # 记录当前 CQ 码 '[' 的位置
 
-    for c in cq:
+    for i, c in enumerate(cq):
+        error_context = f"在字符 {i} ('{c}') 附近"
+        cq_error_context = f"在起始于字符 {cq_start_pos} 的 CQ 码中，{error_context}"
+
         if now_state == 0:  # 解析普通文本
-            if c == "[":  # 进入CQ码解析
-                now_state = 1
-                if len(segment_data["text"]):  # 先存储之前的普通文本
+            if cq_start_pos == -1:  # 文本块开始
+                cq_start_pos = i
+            if c == "[":
+                # 遇到可能的 CQ 码开头，先保存之前的文本
+                if len(segment_data["text"]):
                     cq_array.append({"type": "text", "data": {"text": cq_decode(segment_data["text"])}})
-                segment_data = {}  # 重置segment_data用于存储新的CQ码
+                    segment_data = {"text": ""}  # 重置文本段
+
+                # 记录起始位置，进入状态 1
+                cq_start_pos = i
+                now_state = 1
+                # 重置当前 CQ 码的临时变量
+                now_segment_type = ""  # 开始累积类型部分
+                current_cq_data = {}
+                now_key = ""
+                now_value = ""
+            elif c == "]":
+                raise ValueError(f"cq_2_array: {error_context}: 文本块中包含非法字符: ']'")
             else:
                 segment_data["text"] += c  # 继续拼接普通文本
 
-        elif now_state == 1:  # 解析CQ码类型
+        elif now_state == 1:  # 解析类型 (包含 [CQ: 前缀)
             if c == ",":  # 类型解析结束，进入参数键解析
-                now_state = 2
-                now_segment_type = now_segment_type[3:]  # 移除CQ:前缀
-            else:
-                now_segment_type += c  # 继续拼接类型字符串
+                if not now_segment_type.startswith("CQ:"):
+                    raise ValueError(f"cq_2_array: {cq_error_context}: 期望 'CQ:' 前缀，但得到 '{now_segment_type}'")
 
-        elif now_state == 2:  # 解析参数键
+                actual_type = now_segment_type[3:]
+                if not actual_type:
+                    raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码类型不能为空")
+
+                now_segment_type = actual_type  # 保存处理后的类型名
+                now_state = 2  # 进入参数键解析状态
+                now_key = ""  # 准备解析第一个键
+            elif c == "]":  # 类型解析结束，无参数 CQ 码结束
+                if not now_segment_type.startswith("CQ:"):
+                    # 如果不是 CQ: 开头，根据严格程度，可以报错或当作普通文本处理
+                    # 这里我们严格处理，既然进入了状态1，就必须是 CQ: 开头
+                    raise ValueError(f"cq_2_array: {cq_error_context}: 期望 'CQ:' 前缀，但得到 '{now_segment_type}'")
+
+                actual_type = now_segment_type[3:]
+                if not actual_type:
+                    raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码类型不能为空")
+
+                # 存入无参数的 CQ 码段
+                cq_array.append({"type": actual_type, "data": {}})  # data 为空
+                now_state = 0  # 回到初始状态
+                cq_start_pos = -1  # 重置
+            elif c == '[':  # 类型名中不应包含未转义的 '['
+                raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码类型 '{now_segment_type}' 中包含非法字符 '['")
+            else:
+                # 继续拼接类型部分 (此时包含 CQ:)
+                now_segment_type += c
+
+        elif now_state == 2:  # 解析参数键 (key)
             if c == "=":  # 键名解析结束，进入值解析
-                now_state = 3
-                now_key = cq_decode(now_key, in_cq=True)  # 解码键名
-                if now_key not in segment_data:
-                    segment_data[now_key] = ""  # 初始化键值
-                else:
-                    raise ValueError("cq_2_array: CQ码键名称重复")
+                if not now_key:
+                    raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码参数键不能为空")
+
+                # 检查键名重复 (键名通常不解码，或按需解码)
+                # decoded_key = cq_decode(now_key, in_cq=True) # 如果键名需要解码
+                decoded_key = now_key  # 假设键名不解码
+                if decoded_key in current_cq_data:
+                    raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码参数键 '{decoded_key}' 重复")
+
+                now_key = decoded_key  # 保存解码后（或原始）的键名
+                now_state = 3  # 进入参数值解析状态
+                now_value = ""  # 准备解析值
+            elif c == "," or c == "]":  # 在键名后遇到逗号或方括号是错误的
+                raise ValueError(f"cq_2_array: {cq_error_context}: 在参数键 '{now_key}' 后期望 '='，但遇到 '{c}'")
+            elif c == '[':  # 键名中不应包含未转义的 '[' (根据规范，& 和 , 也应转义，但这里简化检查)
+                raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码参数键 '{now_key}' 中包含非法字符 '['")
             else:
                 now_key += c  # 继续拼接键名
 
-        elif now_state == 3:  # 解析参数值
-            if c == "]":  # CQ码结束
-                now_state = 0
-                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)  # 解码值
-                cq_array.append({"type": now_segment_type, "data": segment_data})  # 存入解析结果
-                segment_data = {"text": ""}  # 重置segment_data
-                now_segment_type = ""  # 清空类型
-                now_key = ""  # 清空键名
-            elif c == ",":  # 进入下一个参数键解析
-                segment_data[now_key] = cq_decode(segment_data[now_key], in_cq=True)  # 解码值
-                now_state = 2
-                now_key = ""  # 清空键名，准备解析下一个键
+        elif now_state == 3:  # 解析参数值 (value)
+            if c == ",":  # 当前值结束，进入下一个键解析
+                # 解码当前值并存入
+                current_cq_data[now_key] = cq_decode(now_value, in_cq=True)
+                now_state = 2  # 回到解析键的状态
+                now_key = ""  # 重置键，准备解析下一个
+                # now_value 不需要在这里重置，进入状态 2 后，遇到 = 进入状态 3 时会重置
+            elif c == "]":  # 当前值结束，整个 CQ 码结束
+                # 解码当前值并存入
+                current_cq_data[now_key] = cq_decode(now_value, in_cq=True)
+                # 存入带参数的 CQ 码段
+                cq_array.append({"type": now_segment_type, "data": current_cq_data})
+                now_state = 0  # 回到初始状态
+                cq_start_pos = -1  # 重置
+            elif c == '[':  # 值中不应出现未转义的 '['
+                raise ValueError(f"cq_2_array: {cq_error_context}: CQ 码参数值 '{now_value}' 中包含非法字符 '['")
             else:
-                segment_data[now_key] += c  # 继续拼接参数值
+                now_value += c  # 继续拼接值 (转义由 cq_decode 处理)
 
-    if "text" in segment_data and len(segment_data["text"]):  # 处理末尾可能存在的文本内容
+    # --- 循环结束后检查 ---
+    final_error_context = f"在字符串末尾"
+    if now_state != 0:
+        if cq_start_pos != -1:
+            # 根据当前状态给出更具体的错误提示
+            if now_state == 1:
+                error_detail = f"类型部分 '{now_segment_type}' 未完成"
+            elif now_state == 2:
+                error_detail = f"参数键 '{now_key}' 未完成或缺少 '='"
+            elif now_state == 3:
+                error_detail = f"参数值 '{now_value}' 未结束"
+            else:  # 理论上不会有其他状态
+                error_detail = f"解析停留在未知状态 {now_state}"
+            raise ValueError(
+                f"cq_2_array: {final_error_context}，起始于字符 {cq_start_pos} 的 CQ 码未正确结束 ({error_detail})")
+        else:
+            # 如果 cq_start_pos 是 -1 但状态不是 0，说明逻辑可能出错了
+            raise ValueError(f"cq_2_array: {final_error_context}，解析器状态异常 ({now_state}) 但未记录 CQ 码起始位置")
+
+    # 处理末尾可能剩余的普通文本
+    if len(segment_data["text"]):
         cq_array.append({"type": "text", "data": {"text": cq_decode(segment_data["text"])}})
 
     return cq_array
 
 
-def array_2_cq(cq_array: list | dict) -> str:
+def array_2_cq(cq_array: list[dict[str, dict[str, str]]] | dict[str, dict[str, str]]) -> str:
     """
     array消息段转CQCode
     Args:
@@ -140,17 +222,47 @@ def array_2_cq(cq_array: list | dict) -> str:
     # 将json形式的富文本转换为CQ码
     text = ""
     for segment in cq_array:
-        # 纯文本
-        if segment.get("type") == "text":
-            text += cq_encode(segment.get("data").get("text"))
+        segment_type = segment.get("type")
+        if not isinstance(segment_type, str):
+            # 或者根据需求跳过这个 segment
+            raise ValueError(f"array_2_cq: 消息段缺少有效的 'type': {segment}")
+
+        # 文本
+        if segment_type == "text":
+            data = segment.get("data")
+            if not isinstance(data, dict):
+                raise ValueError(f"array_2_cq: 'text' 类型的消息段缺少有效的 'data' 字典: {segment}")
+            text_content = data.get("text")
+            if not isinstance(text_content, str):
+                raise ValueError(f"array_2_cq: 'text' 类型的消息段 'data' 字典缺少有效的 'text' 字符串: {segment}")
+            text += cq_encode(text_content)
         # CQ码
         else:
-            if segment.get("data"):  # 特判
-                text += f"[CQ:{segment.get('type')}," + ",".join(
-                    [cq_encode(x, in_cq=True) + "=" + cq_encode(segment.get("data")[x], in_cq=True)
-                     for x in segment.get("data").keys()]) + "]"
-            else:
-                text += f"[CQ:{segment.get('type')}]"
+            cq_type_str = f"[CQ:{segment_type}"
+            data = segment.get("data")
+            if isinstance(data, dict) and data:  # data 存在且是包含内容的字典
+                params = []
+                for key, value in data.items():
+                    if not isinstance(key, str):
+                        raise ValueError(
+                            f"array_2_cq: '{segment_type}' 类型的消息段 'data' 字典的键 '{key}' 不是字符串")
+                    if value is None:
+                        continue
+                    if isinstance(value, bool):
+                        value = "1" if value else "0"
+                    if not isinstance(value, str):
+                        try:
+                            value = str(value)
+                        except Exception as e:
+                            raise ValueError(f"array_2_cq: '{segment_type}' 类型的消息段 "
+                                             f"'data' 字典的键 '{key}' 的值 '{value}' 无法被转换: {repr(e)}")
+                    params.append(f"{cq_encode(key, in_cq=True)}={cq_encode(value, in_cq=True)}")
+                if params:
+                    text += cq_type_str + "," + ",".join(params) + "]"
+                else:  # 如果 data 非空但过滤后 params 为空（例如 data 里全是 None 值）
+                    text += cq_type_str + "]"
+            else:  # data 不存在、为 None 或为空字典 {}
+                text += cq_type_str + "]"
     return text
 
 
@@ -206,26 +318,24 @@ class Segment(metaclass=SegmentMeta):
     """
     segment_type = None
 
-    def __init__(self, cq):
+    def __init__(self, cq: str | dict[str, dict[str, str]] | "Segment"):
         self.cq = cq
         if isinstance(cq, str):
-            self.array = cq_2_array(cq)[0]
-            self.type, self.data = list(self.array.values())
+            self.array = cq_2_array(cq)
+            if len(self.array) != 1:
+                raise ValueError("cq_2_array: 输入 CQ 码格式错误")
+            self.array = self.array[0]
         elif isinstance(cq, dict):
             self.array = cq
-            self.cq = array_2_cq(self.array)
-            self.type, self.data = list(self.array.values())
         else:
             for segment in segments:
                 if isinstance(cq, segment):
                     self.array = cq.array
-                    self.cq = str(self.cq)
-                    # print(self.array.values(), list(self.array.values()))
-                    self.type, self.data = list(self.array.values())
                     break
             else:
-                # print(cq, str(cq), type(cq))
                 raise TypeError("Segment: 输入类型错误")
+        self.type = self.array["type"]
+        self.data = self.array.get("data", {})
 
     def __str__(self):
         return self.__repr__()
@@ -341,25 +451,25 @@ class Face(Segment):
     """
     segment_type = "face"
 
-    def __init__(self, face_id):
+    def __init__(self, id_):
         """
         Args:
-            face_id: 表情id
+            id_: 表情id
         """
-        self.face_id = face_id
-        super().__init__({"type": "face", "data": {"id": str(face_id)}})
+        self.id_ = id_
+        super().__init__({"type": "face", "data": {"id": str(id_)}})
 
-    def set_id(self, face_id):
+    def set_id(self, id_):
         """
         设置表情id
         Args:
-            face_id: 表情id
+            id_: 表情id
         """
-        self.face_id = face_id
-        self.array["data"]["id"] = str(face_id)
+        self.id_ = id_
+        self.array["data"]["id"] = str(id_)
 
     def render(self, group_id: int | None = None):
-        return "[表情: %s]" % self.face_id
+        return f"[表情: {self.id_}]"
 
 
 class At(Segment):
@@ -488,14 +598,14 @@ class Rps(Segment):
     segment_type = "rps"
 
     def __init__(self):
-        super().__init__({"type": "rps"})
+        super().__init__({"type": "rps", "data": {}})
 
 
 class Dice(Segment):
     segment_type = "dice"
 
     def __init__(self):
-        super().__init__({"type": "dice"})
+        super().__init__({"type": "dice", "data": {}})
 
 
 class Shake(Segment):
@@ -506,7 +616,7 @@ class Shake(Segment):
     segment_type = "shake"
 
     def __init__(self):
-        super().__init__({"type": "shake"})
+        super().__init__({"type": "shake", "data": {}})
 
 
 class Poke(Segment):
@@ -515,33 +625,33 @@ class Poke(Segment):
     """
     segment_type = "poke"
 
-    def __init__(self, type_, poke_id):
+    def __init__(self, type_, id_):
         """
         Args:
             type_: 见https://github.com/botuniverse/onebot-11/blob/master/message/segment.md#%E6%88%B3%E4%B8%80%E6%88%B3
-            poke_id: 同上
+            id_: 同上
         """
         self.type = type_
-        self.poke_id = poke_id
-        super().__init__({"type": "poke", "data": {"type": str(self.type)}, "id": str(self.poke_id)})
+        self.id_ = id_
+        super().__init__({"type": "poke", "data": {"type": str(self.type)}, "id": str(self.id_)})
 
-    def set_type(self, qq_type):
+    def set_type(self, type_):
         """
         设置戳一戳类型
         Args:
-            qq_type: qq类型
+            type_: 见https://github.com/botuniverse/onebot-11/blob/master/message/segment.md#%E6%88%B3%E4%B8%80%E6%88%B3
         """
-        self.type = qq_type
-        self.array["data"]["type"] = str(qq_type)
+        self.type = type_
+        self.array["data"]["type"] = str(type_)
 
-    def set_id(self, poke_id):
+    def set_id(self, id_):
         """
         设置戳一戳id
         Args:
-            poke_id: 戳一戳id
+            id_: 戳一戳id
         """
-        self.poke_id = poke_id
-        self.array["data"]["id"] = str(poke_id)
+        self.id_ = id_
+        self.array["data"]["id"] = str(id_)
 
     def render(self, group_id: int | None = None):
         return f"[戳一戳: {self.type}]"
@@ -736,6 +846,7 @@ class Node(Segment):
     """
     合并转发消息节点
     接收时，此消息段不会直接出现在消息事件的 message 中，需通过 get_forward_msg API 获取。
+    这是最阴间的消息段之一，tm的Onebot协议，各种转换的细节根本就没定义清楚，感觉CQ码的支持就像后加的，而且纯纯草台班子
     """
     segment_type = "node"
 
@@ -789,6 +900,14 @@ class Node(Segment):
             return f"[合并转发节点: {self.name}({self.user_id}): {self.message}]"
         else:
             return f"[合并转发节点: {self.message_id}]"
+
+    def __repr__(self):
+        """
+        去tm的CQ码
+        Raises:
+            NotImplementedError: 暂不支持此方法
+        """
+        raise NotImplementedError("不支持将Node转成CQ码")
 
 
 class Music(Segment):
@@ -906,25 +1025,25 @@ class Reply(Segment):
     """
     segment_type = "reply"
 
-    def __init__(self, message_id):
+    def __init__(self, id_):
         """
         Args:
-            message_id: 回复消息 ID
+            id_: 回复消息 ID
         """
-        self.message_id = message_id
-        super().__init__({"type": "reply", "data": {"id": str(self.message_id)}})
+        self.id_ = id_
+        super().__init__({"type": "reply", "data": {"id": str(self.id_)}})
 
-    def set_message_id(self, message_id):
+    def set_id(self, id_):
         """
         设置消息 ID
         Args:
-            message_id: 消息 ID
+            id_: 消息 ID
         """
-        self.message_id = message_id
-        self.array["data"]["id"] = str(self.message_id)
+        self.id_ = id_
+        self.array["data"]["id"] = str(self.id_)
 
     def render(self, group_id: int | None = None):
-        return f"[回复: {self.message_id}]"
+        return f"[回复: {self.id_}]"
 
 
 class Forward(Segment):
@@ -933,25 +1052,25 @@ class Forward(Segment):
     """
     segment_type = "forward"
 
-    def __init__(self, forward_id):
+    def __init__(self, id_):
         """
         Args:
-            forward_id: 合并转发消息 ID
+            id_: 合并转发消息 ID
         """
-        self.forward_id = forward_id
-        super().__init__({"type": "forward", "data": {"id": str(self.forward_id)}})
+        self.id_ = id_
+        super().__init__({"type": "forward", "data": {"id": str(self.id_)}})
 
-    def set_forward_id(self, forward_id):
+    def set_id(self, id_):
         """
-        设置合并转发消息 ID
+        设置合并转发 ID
         Args:
-            forward_id: 合并转发消息 ID
+            id_: 合并转发消息 ID
         """
-        self.forward_id = forward_id
-        self.array["data"]["id"] = str(self.forward_id)
+        self.id_ = id_
+        self.array["data"]["id"] = str(self.id_)
 
     def render(self, group_id: int | None = None):
-        return f"[合并转发: {self.forward_id}]"
+        return f"[合并转发: {self.id_}]"
 
 
 class XML(Segment):
@@ -1011,7 +1130,11 @@ class QQRichText:
     QQ富文本
     """
 
-    def __init__(self, *rich: str | dict | list | tuple | Segment):
+    def __init__(
+            self,
+            *rich: dict[str, dict[str, str]] | str | Segment | "QQRichText" | list[
+                dict[str, dict[str, str]] | str | Segment | "QQRichText"]
+    ):
         """
         Args:
             *rich: 富文本内容，可为 str、dict、list、tuple、Segment、QQRichText
@@ -1019,47 +1142,30 @@ class QQRichText:
 
         # 特判
         self.rich_array: list[Segment] = []
-        if len(rich) == 1:
+
+        if len(rich) == 1 and isinstance(rich[0], (list, tuple)):
             rich = rich[0]
 
         # 识别输入的是CQCode or json形式的富文本
         # 如果输入的是CQCode，则转换为json形式的富文本
 
         # 处理CQCode
-        if isinstance(rich, str):
-            rich_string = rich
-            rich = cq_2_array(rich_string)
-
-        elif isinstance(rich, dict):
-            rich = [rich]
-        elif isinstance(rich, (list, tuple)):
-            array = []
-            for item in rich:
-                if isinstance(item, dict):
-                    array.append(item)
-                elif isinstance(item, str):
-                    array += cq_2_array(item)
-                else:
-                    for segment in segments:
-                        if isinstance(item, segment):
-                            array.append(item.array)
-                            break
-                    else:
-                        if isinstance(rich, QQRichText):
-                            array += rich.rich_array
-                        else:
-                            raise TypeError("QQRichText: 输入类型错误")
-            rich = array
-        else:
-            for segment in segments:
-                if isinstance(rich, segment):
-                    rich = [rich.array]
-                    break
+        array = []
+        for item in rich:
+            if isinstance(item, dict):
+                array.append(item)
+            elif isinstance(item, str):
+                array += cq_2_array(item)
+            elif isinstance(item, QQRichText):
+                array += item.rich_array
             else:
-                if isinstance(rich, QQRichText):
-                    rich = rich.rich_array
+                for segment in segments:
+                    if isinstance(item, segment):
+                        array.append(item.array)
+                        break
                 else:
                     raise TypeError("QQRichText: 输入类型错误")
+        rich = array
 
         # 将rich转换为的Segment
         for i in range(len(rich)):
@@ -1071,15 +1177,7 @@ class QQRichText:
                         if param in rich[i]["data"]:
                             kwargs[param] = rich[i]["data"][param]
                         else:
-                            if rich[i]["type"] == "reply" and param == "message_id":
-                                kwargs[param] = rich[i]["data"].get("id")
-                            elif rich[i]["type"] == "face" and param == "face_id":
-                                kwargs[param] = rich[i]["data"].get("id")
-                            elif rich[i]["type"] == "forward" and param == "forward_id":
-                                kwargs[param] = rich[i]["data"].get("id")
-                            elif rich[i]["type"] == "poke" and param == "poke_id":
-                                kwargs[param] = rich[i]["data"].get("id")
-                            elif param == "id_":
+                            if param == "id_":
                                 kwargs[param] = rich[i]["data"].get("id")
                             elif param == "type_":
                                 kwargs[param] = rich[i]["data"].get("type")
@@ -1097,9 +1195,9 @@ class QQRichText:
                         dump_path = save_exc_dump(f"转换{rich[i]}时失败")
                     else:
                         dump_path = None
-                    Logger.get_logger().warning(f"转换{rich[i]}时失败，报错信息: {repr(e)}\n"
-                                                f"{traceback.format_exc()}"
-                                                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
+                    Logger.get_logger().warning(f"转换{rich[i]}时失败，报错信息: {repr(e)}"
+                                                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                                                exc_info=True)
                     rich[i] = Segment(rich[i])
             else:
                 rich[i] = Segment(rich[i])
@@ -1118,7 +1216,7 @@ class QQRichText:
         return text
 
     def __str__(self):
-        self.rich_string = array_2_cq(self.rich_array)
+        self.rich_string = array_2_cq(self.get_array())
         return self.rich_string
 
     def __repr__(self):
@@ -1145,9 +1243,9 @@ class QQRichText:
             except (TypeError, AttributeError):
                 return False
 
-    def get_array(self):
+    def get_array(self) -> list[dict[str, dict[str, str]]]:
         """
-        获取rich_array（非抽象类，可用于API调用等）
+        获取rich_array的纯数组形式（用于序列化）
         Returns:
             rich_array
         """
@@ -1186,7 +1284,9 @@ if __name__ == "__main__":
     print(rich)
     print(rich.render())
 
-    print(QQRichText(At(114514)))
+    print(QQRichText(rich))
+
+    print(QQRichText(At(114514), At(1919810), "114514", Reply(133).array))
     print(Segment(At(1919810)))
     print(QQRichText([{"type": "text", "data": {"text": "1919810"}}]))
     print(QQRichText().add(At(114514)).add(Text("我吃柠檬")) + QQRichText(At(1919810)).rich_array)
@@ -1194,3 +1294,37 @@ if __name__ == "__main__":
     rich = QQRichText(rich_array)
     print(rich)
     print(rich.get_array())
+
+    print("--- 正确示例 ---")
+    print(cq_2_array("你好[CQ:face,id=123]世界[CQ:image,file=abc.jpg,url=http://a.com/b?c=1&d=2]"))
+    print(cq_2_array("[CQ:shake]"))
+    print(cq_2_array("只有文本"))
+    print(cq_2_array("[CQ:at,qq=123][CQ:at,qq=456]"))
+
+    print("\n--- 错误示例 ---")
+    # 触发不同类型的 ValueError
+    error_inputs = [
+        "文本[CQ:face,id=123",  # 未闭合 (类型 3 结束)
+        "文本[CQ:face,id]",  # 缺少=
+        "文本[CQ:,id=123]",  # 类型为空
+        "文本[NotCQ:face,id=123]",  # 非 CQ: 开头
+        "文本[:face,id=123]",  # 非 CQ: 开头 (更具体)
+        "文本[CQ:face,id=123,id=456]",  # 重复键
+        "文本[CQ:face,,id=123]",  # 多余逗号 (会导致空键名错误)
+        "文本[CQ:fa[ce,id=123]",  # 类型中非法字符 '['
+        "文本[CQ:face,ke[y=value]",  # 键中非法字符 '['
+        "文本[CQ:face,key=val]ue]",  # 文本中非法字符 ']'
+        "[",  # 未闭合 (类型 1 结束)
+        "[CQ",  # 未闭合 (类型 1 结束)
+        "[CQ:",  # 未闭合 (类型 1 结束)
+        "[CQ:type,",  # 未闭合 (类型 2 结束)
+        "[CQ:type,key",  # 未闭合 (类型 2 结束)
+        "[CQ:type,key=",  # 未闭合 (类型 3 结束)
+        "[CQ:type,key=value"  # 未闭合 (类型 2 结束)
+    ]
+    for err_cq in error_inputs:
+        try:
+            print(f"\nTesting: {err_cq}")
+            cq_2_array(err_cq)
+        except ValueError as e:
+            print(f"捕获到错误: {e}")

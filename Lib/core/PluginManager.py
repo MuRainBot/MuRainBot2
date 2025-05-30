@@ -6,7 +6,6 @@ import dataclasses
 import importlib
 import inspect
 import sys
-import traceback
 
 from Lib.common import save_exc_dump
 from Lib.constants import *
@@ -61,8 +60,7 @@ def load_plugin(plugin):
         logger.debug(f"尝试加载: {import_path}")
         module = importlib.import_module(import_path)
     except ImportError as e:
-        logger.error(f"加载 {import_path} 失败: {repr(e)}\n"
-                     f"{traceback.format_exc()}")
+        logger.error(f"加载 {import_path} 失败: {repr(e)}", exc_info=True)
         raise
 
     plugin_info = None
@@ -133,9 +131,9 @@ def load_plugins():
                 dump_path = save_exc_dump(f"尝试加载插件 {full_path} 时失败")
             else:
                 dump_path = None
-            logger.error(f"尝试加载插件 {full_path} 时失败！ 原因:{repr(e)}\n"
-                         f"{"".join(traceback.format_exc())}"
-                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
+            logger.error(f"尝试加载插件 {full_path} 时失败！ 原因:{repr(e)}"
+                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                         exc_info=True)
             continue
 
         logger.debug(f"插件 {name}({full_path}) 加载成功！")
@@ -188,9 +186,9 @@ def requirement_plugin(plugin_name: str):
                         dump_path = save_exc_dump(f"尝试加载被依赖的插件 {plugin_name} 时失败！")
                     else:
                         dump_path = None
-                    logger.error(f"尝试加载被依赖的插件 {plugin_name} 时失败！ 原因:{repr(e)}\n"
-                                 f"{"".join(traceback.format_exc())}"
-                                 f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}")
+                    logger.error(f"尝试加载被依赖的插件 {plugin_name} 时失败！ 原因:{repr(e)}"
+                                 f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                                 exc_info=True)
                     raise e
                 logger.debug(f"由于插件依赖，插件 {plugin_name} 加载成功！")
             else:

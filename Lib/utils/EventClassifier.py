@@ -166,6 +166,7 @@ class PrivateMessageEvent(MessageEvent):
                 f"{self.message.render()}"
                 f"({self.message_id})"
             )
+            return None
 
         elif self.sub_type == "group":
             logger.info(
@@ -182,6 +183,7 @@ class PrivateMessageEvent(MessageEvent):
                 f"{self.message.render()}"
                 f"({self.message_id})"
             )
+            return None
 
         elif self.sub_type == "other":
             logger.info(
@@ -195,6 +197,7 @@ class PrivateMessageEvent(MessageEvent):
                 f"{self.message.render()}"
                 f"({self.message_id})"
             )
+            return None
 
         else:
             return super().logger()
@@ -227,6 +230,7 @@ class GroupMessageEvent(MessageEvent):
                 f"{self.message.render(group_id=self.group_id)}"
                 f"({self.message_id})"
             )
+            return None
 
         elif self.sub_type == "anonymous":
             anonymous_data = self.get('anonymous', {})
@@ -242,6 +246,7 @@ class GroupMessageEvent(MessageEvent):
                 f"{self.message.render(group_id=self.group_id)}"
                 f"({self.message_id})"
             )
+            return None
 
         elif self.sub_type == "notice":
             logger.info(
@@ -252,6 +257,7 @@ class GroupMessageEvent(MessageEvent):
                 f"{self.message.render(group_id=self.group_id)}"
                 f"({self.message_id})"
             )
+            return None
 
         else:
             return super().logger()

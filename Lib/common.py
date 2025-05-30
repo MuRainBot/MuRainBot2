@@ -6,7 +6,6 @@ import shutil
 import sys
 import threading
 import time
-import traceback
 import uuid
 from collections import OrderedDict
 from io import BytesIO
@@ -222,14 +221,32 @@ def save_exc_dump(description: str = None, path: str = None):
         description: 保存的dump描述，为空则默认
         path: 保存的路径，为空则自动根据错误生成
     """
+    # 扫描是否存在非当前日期且为归档的exc_dump
+    exc_dump_files = [
+        file for file in os.listdir(DUMPS_PATH) if file.startswith("coredumpy_") and file.endswith(".dump")
+    ]
+
+    today_date = time.strftime("%Y%m%d")
+    date_flags = []
+
+    for file in exc_dump_files:
+        file_date = file.split("coredumpy_", 1)[1].split("_", 1)[0][:len("YYYYMMDD")]
+        if file_date != today_date:
+            os.makedirs(os.path.join(DUMPS_PATH, f"coredumpy_archive_{file_date}"), exist_ok=True)
+            os.rename(os.path.join(DUMPS_PATH, file), os.path.join(DUMPS_PATH, f"coredumpy_archive_{file_date}", file))
+            if file_date not in date_flags:
+                logger.info(f"已自动归档 {file_date} 的异常堆栈到 coredumpy_archive_{file_date}")
+                date_flags.append(file_date)
+
+    # 保存dump文件
     try:
         import coredumpy
     except ImportError:
         logger.warning("coredumpy未安装，无法保存异常堆栈")
-        return
+        return None
 
     try:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
+        _, _, exc_traceback = sys.exc_info()
         if not exc_traceback:
             raise Exception("No traceback found")
 
@@ -245,12 +262,12 @@ def save_exc_dump(description: str = None, path: str = None):
             if i > 0:
                 path_ = os.path.join(DUMPS_PATH,
                                      f"coredumpy_"
-                                     f"{time.strftime('%Y%m%d%H%M%S')}_"
+                                     f"{time.strftime('%Y%m%d%-H%M%S')}_"
                                      f"{frame.f_code.co_name}_{i}.dump")
             else:
                 path_ = os.path.join(DUMPS_PATH,
                                      f"coredumpy_"
-                                     f"{time.strftime('%Y%m%d%H%M%S')}_"
+                                     f"{time.strftime('%Y%m%d-%H%M%S')}_"
                                      f"{frame.f_code.co_name}.dump")
             if not os.path.exists(path_):
                 break
@@ -270,8 +287,7 @@ def save_exc_dump(description: str = None, path: str = None):
 
         coredumpy.dump(**kwargs)
     except Exception as e:
-        logger.error(f"保存异常堆栈时发生错误: {repr(e)}\n"
-                     f"{traceback.format_exc()}")
+        logger.error(f"保存异常堆栈时发生错误: {repr(e)}", exc_info=True)
         return None
 
     return kwargs["path"]

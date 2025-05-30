@@ -2,14 +2,12 @@
 事件处理器
 """
 import copy
-import traceback
+import inspect
+from typing import Literal, Callable, Any, Type
 
 from Lib.common import save_exc_dump
 from Lib.core import EventManager, ConfigManager, PluginManager
 from Lib.utils import EventClassifier, Logger, QQRichText, StateManager
-
-import inspect
-from typing import Literal, Callable, Any, Type
 
 logger = Logger.get_logger()
 
@@ -28,6 +26,16 @@ class Rule:
             是否匹配到事件
         """
         pass
+
+    def __and__(self, other: "Rule"):
+        if not isinstance(other, Rule):
+            raise TypeError("other must be a Rule")
+        return AllRule(self, other)
+
+    def __or__(self, other: "Rule"):
+        if not isinstance(other, Rule):
+            raise TypeError("other must be a Rule")
+        return AnyRule(self, other)
 
 
 class AnyRule(Rule):
@@ -89,14 +97,15 @@ class KeyValueRule(Rule):
                     return self.value not in event_data.get(self.key)
                 case "func":
                     return self.func(event_data.get(self.key), self.value)
+            return None
         except Exception as e:
             if ConfigManager.GlobalConfig().debug.save_dump:
                 dump_path = save_exc_dump(f"执行匹配事件器时出错 {event_data}")
             else:
                 dump_path = None
-            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}\n"
-                         f"{traceback.format_exc()}"
-                         f"{f"已保存异常到 {dump_path}" if dump_path else ""}")
+            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}"
+                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                         exc_info=True)
             return False
 
 
@@ -122,9 +131,9 @@ class FuncRule(Rule):
             else:
                 dump_path = None
 
-            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}\n"
-                         f"{traceback.format_exc()}"
-                         f"{f"已保存异常到 {dump_path}" if dump_path else ""}"
+            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}"
+                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                         exc_info=True
                          )
             return False
 
@@ -197,7 +206,7 @@ class CommandRule(Rule):
         if (
                 len(segments) > 0 and
                 isinstance(segments[0], QQRichText.At) and
-                int(segments[0].data.get("qq")) == event_data.self_id
+                str(segments[0].data.get("qq")) == str(event_data.self_id)
         ):
             segments = segments[1:]
             is_at = True
@@ -274,11 +283,12 @@ def _to_me(event_data: EventClassifier.MessageEvent):
     if not isinstance(event_data, EventClassifier.MessageEvent):
         logger.warning(f"event {event_data} is not a MessageEvent, cannot match to_me")
         return False
-    if isinstance(event_data, EventClassifier.PrivateMessageEvent):
+    if event_data.message_type == "private":
         return True
-    if isinstance(event_data, EventClassifier.GroupMessageEvent):
+    if event_data.message_type == "group":
         for rich in event_data.message.rich_array:
-            if isinstance(rich, QQRichText.At) and int(rich.data.get("qq")) == event_data.self_id:
+            if (isinstance(rich, QQRichText.At) and str(rich.data.get("qq")) ==
+                    str(ConfigManager.GlobalConfig().account.user_id)):
                 return True
     return False
 
@@ -332,11 +342,13 @@ class Matcher:
 
                 for name, param in sig.parameters.items():
                     if name == "state":
-                        if (isinstance(event_data, EventClassifier.MessageEvent) or
-                                isinstance(event_data, EventClassifier.PrivateMessageEvent)):
-                            state_id = f"u{event_data.user_id}"
-                        elif isinstance(event_data, EventClassifier.GroupMessageEvent):
-                            state_id = f"g{event_data.group_id}_u{event_data.user_id}"
+                        if isinstance(event_data, EventClassifier.MessageEvent):
+                            if event_data.message_type == "private":
+                                state_id = f"u{event_data.user_id}"
+                            elif event_data.message_type == "group":
+                                state_id = f"g{event_data["group_id"]}_u{event_data.user_id}"
+                            else:
+                                raise TypeError("event_data.message_type must be private or group")
                         else:
                             raise TypeError("event_data must be a MessageEvent")
                         handler_kwargs[name] = StateManager.get_state(state_id, plugin_data)
@@ -364,9 +376,9 @@ class Matcher:
                 else:
                     dump_path = None
                 logger.error(
-                    f"执行匹配事件或执行处理器时出错 {event_data}: {repr(e)}\n"
-                    f"{traceback.format_exc()}"
-                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}"
+                    f"执行匹配事件或执行处理器时出错 {event_data}: {repr(e)}"
+                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                    exc_info=True
                 )
 
 

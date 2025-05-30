@@ -1,7 +1,7 @@
 """
 日志记录器
 """
-
+import inspect
 import logging
 import logging.handlers as handlers
 import sys
@@ -10,7 +10,8 @@ from ..constants import *
 import coloredlogs
 
 
-logger: logging.Logger = None
+logger_instance: logging.Logger = None # 重命名全局变量以区分
+FRAMEWORK_LOGGER_NAME = "murainbot"
 
 
 def init(logs_path: str = LOGS_PATH, logger_level: int = logging.INFO):
@@ -22,10 +23,10 @@ def init(logs_path: str = LOGS_PATH, logger_level: int = logging.INFO):
     Returns:
         None
     """
-    global logger
+    global logger_instance
 
-    if logger is not None:
-        return logger
+    if logger_instance is not None:
+        return logger_instance
     # 日志颜色
     log_colors = {
         "DEBUG": "white",
@@ -40,14 +41,14 @@ def init(logs_path: str = LOGS_PATH, logger_level: int = logging.INFO):
         "levelname": {"color": "white"}
     }
     # 日志格式
-    fmt = "[%(asctime)s] [%(filename)s] [%(levelname)s]: %(message)s"
+    fmt = "[%(asctime)s] [%(name)s] [%(levelname)s]: %(message)s"
     # 设置日志
     coloredlogs.install(isatty=True, stream=sys.stdout, field_styles=log_field_styles, fmt=fmt, colors=log_colors)
 
     # 设置文件日志
-    logger = logging.getLogger()
+    logger_instance = logging.getLogger()
 
-    logger.setLevel(logger_level)
+    logger_instance.setLevel(logger_level)
     coloredlogs.set_level(logger_level)
 
     log_name = "latest.log"
@@ -73,8 +74,8 @@ def init(logs_path: str = LOGS_PATH, logger_level: int = logging.INFO):
     file_handler.namer = namer
     file_handler.suffix = "%Y-%m-%d.log"
     file_handler.setFormatter(logging.Formatter(fmt))
-    logger.addHandler(file_handler)
-    return logger
+    logger_instance.addHandler(file_handler)
+    return logger_instance
 
 
 def set_logger_level(level: int):
@@ -85,17 +86,43 @@ def set_logger_level(level: int):
     Returns:
         None
     """
-    global logger
-    logger.setLevel(level)
+    global logger_instance
+    logger_instance.setLevel(level)
     coloredlogs.set_level(level)
 
 
-def get_logger():
+def get_logger(name: str | None = None):
     """
     获取日志记录器
     Returns:
         Logger
     """
-    if not logger:
+
+    if name is None:
+        try:
+            frame = inspect.currentframe().f_back
+            # 从栈帧的全局变量中获取 __name__
+            module_name = frame.f_globals.get('__name__')
+
+            if module_name and isinstance(module_name, str):
+                if module_name == "__main__":
+                    logger_name = FRAMEWORK_LOGGER_NAME
+                elif module_name.startswith("Lib"):
+                    logger_name = FRAMEWORK_LOGGER_NAME + module_name[3:]
+                elif module_name.startswith("plugins"):
+                    logger_name = FRAMEWORK_LOGGER_NAME + "." + module_name
+                else:
+                    logger_name = module_name
+            else:
+                logger_name = FRAMEWORK_LOGGER_NAME
+        except Exception:
+            logger_name = FRAMEWORK_LOGGER_NAME
+    elif isinstance(name, str):
+        logger_name = f"{FRAMEWORK_LOGGER_NAME}.{name}"
+    else:
+        logger_name = FRAMEWORK_LOGGER_NAME
+
+    if not logger_instance:
         init()
-    return logger
+
+    return logging.getLogger(logger_name)
