@@ -225,12 +225,16 @@ def run_plugin_main_wrapper(event):
     run_plugin_main(event.event_data)
 
 
-def get_caller_plugin_data():
+def get_caller_plugin_data(ignore_self=False):
     """
     获取调用者的插件数据
-    :return:
+    Args:
+         ignore_self: bool，是否忽略第一个是插件调用者
+    Returns:
         plugin_data: dict | None
     """
+
+    skip_self_flag = None if ignore_self else True
 
     stack = inspect.stack()[1:]
     for frame_info in stack:
@@ -245,9 +249,14 @@ def get_caller_plugin_data():
                 plugin_dir, plugin_file = os.path.split(normalized_plugin_file_path)
 
                 if plugin_dir == normalized_plugins_path:
-                    if normalized_plugin_file_path == normalized_filename:
-                        return plugin
+                    if normalized_plugin_file_path != normalized_filename:
+                        continue
                 else:
-                    if normalized_filename.startswith(plugin_dir):
+                    if not normalized_filename.startswith(plugin_dir):
+                        continue
+                if skip_self_flag is None:
+                    skip_self_flag = plugin
+                else:
+                    if plugin != skip_self_flag:
                         return plugin
     return None
