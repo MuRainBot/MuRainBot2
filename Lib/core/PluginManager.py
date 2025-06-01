@@ -18,7 +18,6 @@ logger = get_logger()
 
 plugins: list[dict] = []
 found_plugins: list[dict] = []
-has_main_func_plugins: list[dict] = []
 
 if not os.path.exists(PLUGINS_PATH):
     os.makedirs(PLUGINS_PATH)
@@ -196,33 +195,6 @@ def requirement_plugin(plugin_name: str):
             return plugin
     else:
         raise FileNotFoundError(f"插件 {plugin_name} 不存在或不符合要求，无法加载依赖")
-
-
-# 该方法已被弃用
-def run_plugin_main(event_data):
-    """
-    运行插件的main函数
-    Args:
-        event_data: 事件数据
-    """
-    global has_main_func_plugins
-    for plugin in has_main_func_plugins:
-        logger.debug(f"执行插件: {plugin['name']}")
-        try:
-            plugin["plugin"].main(event_data, WORK_PATH)
-        except Exception as e:
-            logger.error(f"执行插件{plugin['name']}时发生错误: {repr(e)}")
-            continue
-
-
-@event_listener(EscalationEvent)
-def run_plugin_main_wrapper(event):
-    """
-    运行插件的main函数
-    Args:
-        event: 事件
-    """
-    run_plugin_main(event.event_data)
 
 
 def get_caller_plugin_data(ignore_self=False):
