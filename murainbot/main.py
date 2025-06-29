@@ -146,7 +146,7 @@ def start(work_path=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     logger.debug(f"准备加载插件")
     PluginManager.load_plugins()
     logger.info(f"插件加载完成！共成功加载了 {len(PluginManager.plugins)} 个插件"
-                f"{': \n' if len(PluginManager.plugins) >= 1 else ''}"
+                f"{': \n' if PluginManager.plugins else ''}"
                 f"{'\n'.join(
                     [
                         f'{_['name']}: {_['info'].NAME}' if 'info' in _ and _['info'] else _['name']

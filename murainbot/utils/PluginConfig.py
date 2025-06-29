@@ -4,6 +4,7 @@
 
 import inspect
 import os
+from pathlib import Path
 
 from murainbot.core import ConfigManager, PluginManager
 from murainbot.paths import paths
@@ -28,7 +29,8 @@ class PluginConfig(ConfigManager.ConfigManager):
             stack.reverse()
             while stack:
                 frame, filename, line_number, function_name, lines, index = stack.pop(0)
-                if filename.startswith(paths.PLUGINS_PATH):
+                filepath = Path(filename)
+                if filepath.is_relative_to(paths.PLUGINS_PATH):
                     for plugin in PluginManager.found_plugins:
                         head, tail = os.path.split(plugin["file_path"])
                         if head == paths.PLUGINS_PATH:
