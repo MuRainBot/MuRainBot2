@@ -42,5 +42,5 @@ Documentation = "https://mrb2.xiaosu.icu/"
 [project.scripts]
 murainbot = "murainbot.cli:main"
 
-[tool.setuptools]
-packages = ["murainbot", "murainbot.utils", "murainbot.core"]
+[tool.setuptools.packages.find]
+include = ["murainbot*"]
