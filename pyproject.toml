@@ -33,11 +33,10 @@ classifiers = [
   "Programming Language :: Python :: 3.12"
 ]
 
-homepage = "https://github.com/MuRainBot/MuRainBot2"
-repository = "https://github.com/MuRainBot/MuRainBot2"
-documentation = "https://mrb2.xiaosu.icu/"
-
 [project.urls]
+Homepage = "https://github.com/MuRainBot/MuRainBot2"
+Repository = "https://github.com/MuRainBot/MuRainBot2"
+Documentation = "https://mrb2.xiaosu.icu/"
 "Bug Tracker" = "https://github.com/MuRainBot/MuRainBot2/issues"
 
 [project.scripts]
