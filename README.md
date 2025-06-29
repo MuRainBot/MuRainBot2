@@ -78,7 +78,7 @@ MuRainBot2 (MRB2) 是一个基于 Python、适配 OneBot v11 协议的轻量级�
 ```
 ├─ data                MRB2及插件的临时/缓存文件
 │   ├─ ...
-├─ Lib                 MRB2的Lib库，插件和MRB2均需要依赖此Lib
+├─ murainbot                 MRB2的Lib库，插件和MRB2均需要依赖此Lib
 │   ├─ __init__.py     MRB2Lib的初始化文件
 │   ├─ core            核心模块，负责配置文件读取、与实现端通信、插件加载等
 │   |   ├─ ...
