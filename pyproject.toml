@@ -25,17 +25,19 @@ readme = "README.md"
 license-files = ["LICENSE"]
 
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: GNU Lesser General Public License v2.1 (LGPLv2.1)",
-    "Operating System :: OS Independent",
-    "Intended Audience :: Developers",
-    "Topic :: Communications :: Chat"
+  "Development Status :: 3 - Alpha",
+  "Framework :: Robot Framework",
+  "Framework :: Robot Framework :: Library",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12"
 ]
 
+homepage = "https://github.com/MuRainBot/MuRainBot2"
+repository = "https://github.com/MuRainBot/MuRainBot2"
+documentation = "https://mrb2.xiaosu.icu/"
+
 [project.urls]
-Homepage = "https://github.com/MuRainBot/MuRainBot2"
 "Bug Tracker" = "https://github.com/MuRainBot/MuRainBot2/issues"
 
 [project.scripts]
