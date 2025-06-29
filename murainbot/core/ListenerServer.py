@@ -4,7 +4,7 @@
 
 from ..utils import Logger
 from .ConfigManager import GlobalConfig
-from Lib.core import EventManager
+from murainbot.core import EventManager
 
 from concurrent.futures import ThreadPoolExecutor
 from wsgiref.simple_server import WSGIServer

@@ -6,10 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from Lib.core.ThreadPool import async_task
-from Lib.core import ConfigManager
-from Lib.utils import Logger
-from Lib.common import save_exc_dump
+from murainbot.core.ThreadPool import async_task
+from murainbot.core import ConfigManager
+from murainbot.utils import Logger
+from murainbot.common import save_exc_dump
 
 logger = Logger.get_logger()
 

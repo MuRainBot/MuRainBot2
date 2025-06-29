@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 from urllib.parse import urlparse
 
-from Lib.common import save_exc_dump
-from Lib.constants import *
-from Lib.core import ConfigManager
-from Lib.utils import QQDataCacher, Logger
+from murainbot.common import save_exc_dump
+from murainbot.core import ConfigManager
+from murainbot.utils import QQDataCacher, Logger
 
 
 def cq_decode(text, in_cq: bool = False) -> str:
@@ -321,10 +321,10 @@ class Segment(metaclass=SegmentMeta):
     def __init__(self, cq: str | dict[str, dict[str, str]] | "Segment"):
         self.cq = cq
         if isinstance(cq, str):
-            self.array = cq_2_array(cq)
+            array = cq_2_array(cq)
             if len(self.array) != 1:
                 raise ValueError("cq_2_array: 输入 CQ 码格式错误")
-            self.array = self.array[0]
+            self.array = array[0]
         elif isinstance(cq, dict):
             self.array = cq
         else:
@@ -1210,14 +1210,10 @@ class QQRichText:
         Args:
             group_id: 群号，选填，可优化效果
         """
-        text = ""
-        for rich in self.rich_array:
-            text += rich.render(group_id=group_id)
-        return text
+        return "".join(rich.render(group_id=group_id) for rich in self.rich_array)
 
     def __str__(self):
-        self.rich_string = array_2_cq(self.get_array())
-        return self.rich_string
+        return array_2_cq(self.get_array())
 
     def __repr__(self):
         return self.__str__()
@@ -1243,6 +1239,9 @@ class QQRichText:
             except (TypeError, AttributeError):
                 return False
 
+    def __bool__(self):
+        return bool(self.rich_array)
+
     def get_array(self) -> list[dict[str, dict[str, str]]]:
         """
         获取rich_array的纯数组形式（用于序列化）
@@ -1260,12 +1259,32 @@ class QQRichText:
         Returns:
             self
         """
+        res = QQRichText(self)
         for segment in segments:
             if isinstance(segment, Segment):
-                self.rich_array.append(segment)
+                res.rich_array.append(segment)
             else:
-                self.rich_array += QQRichText(segment).rich_array
-        return self
+                res.rich_array += QQRichText(segment).rich_array
+        return res
+
+    def strip(self) -> QQRichText:
+        """
+        去除富文本开头和结尾如果是文本消息段包含的空格和换行，如果去除后没有内容自动删除该消息段，返回处理完成的新的QQRichText
+        """
+        res = QQRichText(self)
+        if len(res.rich_array) == 0:
+            return res
+
+        index = 0
+        for _ in range(2 if len(res.rich_array) else 1):
+            if isinstance(res.rich_array[index], Text):
+                res.rich_array[index].set_text(res.rich_array[index].text.strip())
+                if not res.rich_array[index].text:
+                    res.rich_array.pop(index)
+                    if not res.rich_array:
+                        break
+            index = -1
+        return res
 
 
 # 使用示例
@@ -1278,10 +1297,12 @@ if __name__ == "__main__":
 
     # 测试QQRichText
     rich = QQRichText(
-        "[CQ:reply,id=123][CQ:share,title=标题,url=https://baidu.com] [CQ:at,qq=1919810,abc=123] -  &#91;x&#93; 使用 "
-        " `&amp;data` 获取地址")
+        " [CQ:reply,id=123][CQ:share,title=标题,url=https://baidu.com] [CQ:at,qq=1919810,abc=123] -  &#91;x&#93; 使用 "
+        " `&amp;data` 获取地址\n ")
     print(rich.get_array())
+
     print(rich)
+    print("123" + str(rich.strip()) + "123")
     print(rich.render())
 
     print(QQRichText(rich))

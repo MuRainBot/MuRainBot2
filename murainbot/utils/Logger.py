@@ -4,8 +4,9 @@
 import inspect
 import logging
 import logging.handlers as handlers
+import os
 import sys
-from ..constants import *
+from ..paths import paths
 
 import coloredlogs
 
@@ -14,7 +15,7 @@ logger_instance: logging.Logger = None # 重命名全局变量以区分
 FRAMEWORK_LOGGER_NAME = "murainbot"
 
 
-def init(logs_path: str = LOGS_PATH, logger_level: int = logging.INFO):
+def init(logs_path: str = None, logger_level: int = logging.INFO):
     """
     初始化日志记录器
     Args:
@@ -24,6 +25,9 @@ def init(logs_path: str = LOGS_PATH, logger_level: int = logging.INFO):
         None
     """
     global logger_instance
+
+    if not logs_path:
+        logs_path = paths.LOGS_PATH
 
     if logger_instance is not None:
         return logger_instance
@@ -53,9 +57,6 @@ def init(logs_path: str = LOGS_PATH, logger_level: int = logging.INFO):
 
     log_name = "latest.log"
     log_path = os.path.join(logs_path, log_name)
-    # 如果指定路径不存在，则尝试创建路径
-    if not os.path.exists(logs_path):
-        os.makedirs(logs_path)
 
     def namer(filename):
         """
@@ -107,8 +108,6 @@ def get_logger(name: str | None = None):
             if module_name and isinstance(module_name, str):
                 if module_name == "__main__":
                     logger_name = FRAMEWORK_LOGGER_NAME
-                elif module_name.startswith("Lib"):
-                    logger_name = FRAMEWORK_LOGGER_NAME + module_name[3:]
                 elif module_name.startswith("plugins"):
                     logger_name = FRAMEWORK_LOGGER_NAME + "." + module_name
                 else:

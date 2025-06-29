@@ -2,7 +2,7 @@
 Lagrange的拓展消息段
 """
 
-from Lib.utils import QQRichText
+from murainbot import QQRichText
 
 
 class MFace(QQRichText.Segment):

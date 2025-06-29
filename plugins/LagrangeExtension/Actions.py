@@ -5,9 +5,8 @@ Tips: 下列API由Google gemini自动生成，不保证可用性
 
 from typing import Callable
 
-from Lib.core import OnebotAPI
-from Lib import Actions
-from Lib.utils import Logger, QQDataCacher
+from murainbot.core import OnebotAPI
+from murainbot.utils import Logger, QQDataCacher, Actions
 
 logger = Logger.get_logger()
 

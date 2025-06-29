@@ -2,10 +2,11 @@
 状态管理器
 注意，数据存储于内存中，重启丢失，需要持久化保存的数据请勿放在里面
 """
+from typing import Any
 
-from Lib.core import PluginManager
+from murainbot.core import PluginManager
 
-states = {}
+states: dict[str, Any] = {}
 
 
 def get_state(state_id: str, plugin_data: dict = None):
@@ -48,11 +49,13 @@ def get_state(state_id: str, plugin_data: dict = None):
     if plugin_data is None:
         plugin_data = PluginManager.get_caller_plugin_data()
 
+    plugin_path = plugin_data["path"]
+
     if state_id not in states:
         states[state_id] = {}
 
-    if plugin_data["path"] not in states[state_id]:
-        states[state_id][plugin_data["path"]] = {
+    if plugin_path not in states[state_id]:
+        states[state_id][plugin_path] = {
             "data": {},
             "meta": {
                 "plugin_data": plugin_data

@@ -2,9 +2,9 @@
 操作
 """
 
-from Lib.common import save_exc_dump
-from Lib.core import OnebotAPI, ThreadPool, ConfigManager
-from Lib.utils import QQRichText, Logger, QQDataCacher
+from murainbot.common import save_exc_dump
+from murainbot.core import OnebotAPI, ThreadPool, ConfigManager
+from murainbot.utils import QQRichText, Logger, QQDataCacher
 
 logger = Logger.get_logger()
 

@@ -6,10 +6,10 @@ Created by BigCookie233
 import atexit
 from concurrent.futures import ThreadPoolExecutor
 
-from Lib.common import save_exc_dump
-from Lib.core import ConfigManager
-from Lib.core.ConfigManager import GlobalConfig
-from Lib.utils.Logger import get_logger
+from murainbot.common import save_exc_dump
+from murainbot.core import ConfigManager
+from murainbot.core.ConfigManager import GlobalConfig
+from murainbot.utils.Logger import get_logger
 
 thread_pool = None
 logger = get_logger()
