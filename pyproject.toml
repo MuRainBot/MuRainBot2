@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "murainbot"
-version = "0.0.1"
+version = "0.0.1.dev1"
 authors = [
   { name="Xiaosu", email="xiaosu@xiaosu.icu" },
 ]
@@ -23,6 +23,21 @@ dependencies = [
 
 readme = "README.md"
 license-files = ["LICENSE"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: GNU Lesser General Public License v2.1 (LGPLv2.1)",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Communications :: Chat",
+    "Framework :: Robot",
+]
+
+[project.urls]
+Homepage = "https://github.com/MuRainBot/MuRainBot2"
+"Bug Tracker" = "https://github.com/MuRainBot/MuRainBot2/issues"
 
 [project.scripts]
 murainbot = "murainbot.cli:main"
