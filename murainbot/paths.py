@@ -1,7 +1,7 @@
 """
 MRB2的路径管理
 """
-
+import os
 from pathlib import Path
 
 
@@ -43,3 +43,7 @@ def init_paths(work_path_str: str):
     """
     global paths
     paths = PathManager(Path(work_path_str))
+
+
+if os.path.isdir(os.path.join(os.getcwd(), "murainbot")):
+    init_paths(os.getcwd())
