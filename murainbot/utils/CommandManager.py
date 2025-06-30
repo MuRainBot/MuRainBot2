@@ -3,7 +3,7 @@
 """
 
 import ast
-from typing import Any, Union, Callable
+from typing import Any, Union
 
 from murainbot.common import inject_dependencies, save_exc_dump
 from murainbot.core import EventManager, PluginManager, ConfigManager
@@ -32,6 +32,32 @@ def _split_remaining_cmd(remaining_cmd: QQRichText.QQRichText) -> \
             return remaining_cmd.rich_array[0], QQRichText.QQRichText(*remaining_cmd.rich_array[1:])
 
 
+def encode_arg(arg: str):
+    """
+    编码参数
+    Args:
+        arg: 参数
+
+    Returns:
+        编码后的参数
+    """
+    return (arg.replace("<", "%3C").replace("[", "%5B").replace(">", "%3E").replace("]", "%5D")
+            .replace(",", "%2C"))
+
+
+def decode_arg(arg: str):
+    """
+    解码参数
+    Args:
+        arg: 参数
+
+    Returns:
+        解码后的参数
+    """
+    return (arg.replace("%3C", "<").replace("%5B", "[").replace("%3E", ">").replace("%5D", "]")
+            .replace("%2C", ","))
+
+
 class NotMatchCommandError(Exception):
     """
     没有匹配的命令
@@ -46,8 +72,6 @@ class CommandMatchError(Exception):
     def __init__(self, message: str, command: "BaseArg"):
         super().__init__(message)
         self.command = command
-
-
 
 
 class ArgMeta(type):
@@ -73,7 +97,7 @@ class BaseArg(metaclass=ArgMeta):
         self.next_arg_list = next_arg_list
 
     def __str__(self):
-        return f"<{self.arg_name}: {self.__class__.__module__}.{self.__class__.__name__}>"
+        return f"<{self.arg_name}: {self.__class__.__module__}.{self.__class__.__name__}{self.config_str(", ")}>"
 
     def __repr__(self):
         return "\n".join(self._generate_repr_lines())
@@ -82,7 +106,13 @@ class BaseArg(metaclass=ArgMeta):
         """
         生成该节点的字符串形式
         """
-        return f"{self.__class__.__name__}({self.arg_name!r})"
+        return f"{self.__class__.__name__}({self.arg_name!r}{self.config_str(", ")})"
+
+    def config_str(self, prefix=""):
+        """
+        生成当前节点配置文件的字符串形式
+        """
+        return f"{prefix if self.get_config() else ""}{", ".join(f"{k}={encode_arg(repr(v))}" for k, v in self.get_config().items())}"
 
     def _generate_repr_lines(self, prefix="", is_last=True):
         """
@@ -175,6 +205,28 @@ class BaseArg(metaclass=ArgMeta):
             raise ValueError(f"当前参数的下个参数不止一个")
         return self.next_arg_list[0].get_last_arg()
 
+    def get_config(self) -> dict:
+        """
+        获取当前实例的配置
+        """
+        return {}
+
+    @classmethod
+    def get_instance_from_config(cls, arg_name, config: dict[str, str]) -> "BaseArg":
+        """
+        从配置中创建实例
+        Args:
+            config: 配置
+
+        Returns:
+            创建好的实例
+        """
+        config = {
+            k: ast.literal_eval(v)
+            for k, v in config.items()
+        }
+        return cls(arg_name, **config)
+
 
 class Literal(BaseArg):
     def matcher(self, remaining_cmd: QQRichText.QQRichText) -> bool:
@@ -211,7 +263,7 @@ class OptionalArg(BaseArg):
 
     def __str__(self):
         return (f"[{self.wrapped_arg.arg_name}: {self.wrapped_arg.__class__.__module__}."
-                f"{self.wrapped_arg.__class__.__name__}={self.default!r}]")
+                f"{self.wrapped_arg.__class__.__name__}={self.default!r}{self.wrapped_arg.config_str(", ")}]")
 
     def handler(self, remaining_cmd: QQRichText.QQRichText) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
         return self.wrapped_arg.handler(remaining_cmd)
@@ -262,6 +314,39 @@ class AtSegmentArg(BaseArg):
             raise ValueError(f"参数 {self.arg_name} 的类型必须是@")
 
 
+class EnumArg(BaseArg):
+    def __init__(self, arg_name, enum_list: list[BaseArg], next_arg_list=None):
+        super().__init__(arg_name, next_arg_list)
+        self.enum_list = enum_list
+
+    def get_config(self):
+        return {"enum_list": [str(enum) for enum in self.enum_list]}
+
+    @classmethod
+    def get_instance_from_config(cls, arg_name, config: dict[str, str]) -> "BaseArg":
+        config = {
+            k: ast.literal_eval(v)
+            for k, v in config.items()
+        }
+        config["enum_list"] = [
+            parsing_command_def(enum)
+            for enum in config["enum_list"]
+        ]
+        return cls(arg_name, **config)
+
+    def handler(self, remaining_cmd) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
+        for arg in self.enum_list:
+            if arg.matcher(remaining_cmd):
+                try:
+                    kwargs, remaining_cmd = arg.handler(remaining_cmd)
+                    kwargs[self.arg_name] = arg
+                    return kwargs, remaining_cmd
+                except Exception as e:
+                    logger.debug(f"枚举参数匹配错误: {repr(e)}", exc_info=True)
+        else:
+            raise ValueError(f"不匹配任何参数: {", ".join(str(arg) for arg in self.enum_list)}", self)
+
+
 def parsing_command_def(command_def: str) -> BaseArg:
     """
     字符串命令转命令树
@@ -272,14 +357,18 @@ def parsing_command_def(command_def: str) -> BaseArg:
         命令树
     """
     is_in_arg = False
+    is_in_arg_config = False
+    arg_config = ""
+    arg_configs = {}
     is_in_optional = False
     arg_name = ""
     command_tree = None
     for char in command_def:
-        if char == "<" or char == "[":
+        # print(char, is_in_arg, is_in_arg_config, arg_config, arg_configs, is_in_optional, arg_name)
+        if (char == "<" or char == "[") and not is_in_arg_config:
             arg_name = arg_name.strip()
             if arg_name:
-                if is_in_optional:
+                if is_in_optional and char == "<":
                     raise ValueError("参数定义错误: 必要参数必须放在可选参数之前")
                 if command_tree is not None:
                     command_tree.get_last_arg().add_next_arg(Literal(arg_name))
@@ -290,18 +379,42 @@ def parsing_command_def(command_def: str) -> BaseArg:
                 is_in_arg = True
             else:
                 raise ValueError("参数定义错误")
+        elif char == ",":
+            if is_in_arg:
+                if not is_in_arg_config:
+                    is_in_arg_config = True
+                else:
+                    try:
+                        k, v = arg_config.strip().split("=", 1)
+                    except ValueError:
+                        raise ValueError("参数定义错误")
+                    v = decode_arg(v)
+                    # print(k, v)
+                    arg_configs[k] = v
+            else:
+                raise ValueError("参数定义错误")
         elif char == ">":
             if is_in_arg:
                 if is_in_optional:
                     raise ValueError("参数定义错误: 必要参数必须放在可选参数之前")
+                if is_in_arg_config:
+                    try:
+                        k, v = arg_config.strip().split("=", 1)
+                    except ValueError:
+                        raise ValueError("参数定义错误")
+                    v = decode_arg(v)
+                    # print(k, v)
+                    arg_configs[k] = v
                 is_in_arg = False
+                is_in_arg_config = False
                 arg_name, arg_type = arg_name.split(":", 1)
                 arg_name, arg_type = arg_name.strip(), arg_type.strip()
+                arg = arg_map[arg_type].get_instance_from_config(arg_name, arg_configs)
                 if arg_type in arg_map:
                     if command_tree is not None:
-                        command_tree.get_last_arg().add_next_arg(arg_map[arg_type](arg_name))
+                        command_tree.get_last_arg().add_next_arg(arg)
                     else:
-                        command_tree = arg_map[arg_type](arg_name)
+                        command_tree = arg
                     arg_name = ""
                 else:
                     raise ValueError(f"参数定义错误: 未知的参数类型 {arg_type}")
@@ -309,22 +422,34 @@ def parsing_command_def(command_def: str) -> BaseArg:
                 raise ValueError("参数定义错误")
         elif char == "]":
             if is_in_arg:
+                if is_in_arg_config:
+                    try:
+                        k, v = arg_config.strip().split("=", 1)
+                    except ValueError:
+                        raise ValueError("参数定义错误")
+                    v = decode_arg(v)
+                    # print(k, v)
+                    arg_configs[k] = v
                 is_in_optional = True
                 is_in_arg = False
+                is_in_arg_config = False
                 arg_name, arg_type = arg_name.split(":", 1)
                 arg_type, arg_default = arg_type.split("=", 1)
                 arg_name, arg_type, arg_default = arg_name.strip(), arg_type.strip(), arg_default.strip()
                 arg_default = ast.literal_eval(arg_default)
+                arg = OptionalArg(arg_map[arg_type].get_instance_from_config(arg_name, arg_configs), arg_default)
                 if arg_type in arg_map:
                     if command_tree is not None:
-                        command_tree.get_last_arg().add_next_arg(OptionalArg(arg_map[arg_type](arg_name), arg_default))
+                        command_tree.get_last_arg().add_next_arg(arg)
                     else:
-                        command_tree = OptionalArg(arg_map[arg_type](arg_name), arg_default)
+                        command_tree = arg
                     arg_name = ""
                 else:
                     raise ValueError(f"参数定义错误: 未知的参数类型 {arg_type}")
             else:
                 raise ValueError("参数定义错误")
+        elif is_in_arg_config:
+            arg_config += char
         else:
             arg_name += char
 
@@ -339,6 +464,50 @@ def parsing_command_def(command_def: str) -> BaseArg:
             command_tree = Literal(arg_name)
 
     return command_tree
+
+
+def levenshtein_distance(s1: str, s2: str) -> int:
+    """
+    计算两个字符串之间的莱文斯坦距离（编辑距离）。
+    使用动态规划算法。
+
+    Args:
+        s1: 第一个字符串。
+        s2: 第二个字符串。
+
+    Returns:
+        两个字符串之间的编辑距离。
+    """
+    m, n = len(s1), len(s2)
+
+    # 创建一个 (m+1) x (n+1) 的矩阵来存储距离
+    # dp[i][j] 表示 s1 的前 i 个字符和 s2 的前 j 个字符之间的编辑距离
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+
+    # 初始化矩阵的第一行和第一列
+    # 从空字符串转换到 s2 的前 j 个字符需要 j 次插入
+    for j in range(n + 1):
+        dp[0][j] = j
+    # 从 s1 的前 i 个字符转换到空字符串需要 i 次删除
+    for i in range(m + 1):
+        dp[i][0] = i
+
+    # 填充矩阵的其余部分
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            # 如果 s1[i-1] 和 s2[j-1] 字符相同，则替换成本为 0，否则为 1
+            substitution_cost = 0 if s1[i - 1] == s2[j - 1] else 1
+
+            # dp[i][j] 的值是以下三者中的最小值：
+            # 1. dp[i-1][j] + 1  (删除 s1 的第 i 个字符)
+            # 2. dp[i][j-1] + 1  (在 s1 中插入 s2 的第 j 个字符)
+            # 3. dp[i-1][j-1] + substitution_cost (替换 s1 的第 i 个字符为 s2 的第 j 个字符)
+            dp[i][j] = min(dp[i - 1][j] + 1,  # Deletion
+                           dp[i][j - 1] + 1,  # Insertion
+                           dp[i - 1][j - 1] + substitution_cost)  # Substitution
+
+    # 最终结果位于矩阵的右下角
+    return dp[m][n]
 
 
 def get_all_optional_args_recursive(start_node: BaseArg):
@@ -441,6 +610,26 @@ class CommandManager:
                 now_command_def = command_def
                 break
         else:
+            literals = [_.arg_name for _ in self.command_list if isinstance(_, Literal)]
+            user_input = command.rich_array[0]
+            if user_input.type == "text":
+                user_input = user_input.data.get("text")
+            else:
+                user_input = None
+            if literals and user_input:
+                closest_command = None
+                min_dist = float('inf')
+
+                for command in literals:
+                    dist = levenshtein_distance(user_input, command)
+
+                    if dist < min_dist and dist <= 3:
+                        min_dist = dist
+                        closest_command = command
+                if closest_command:
+                    raise NotMatchCommandError(f'命令不匹配任何命令定义: '
+                                               f'{", ".join([str(_) for _ in self.command_list])}\n'
+                                               f'你的意思是: {closest_command}？')
             raise NotMatchCommandError(f'命令不匹配任何命令定义: '
                                        f'{", ".join([str(_) for _ in self.command_list])}')
         try:
@@ -544,6 +733,7 @@ class CommandMatcher(EventHandlers.Matcher):
             kwargs, command_def, last_command_def = self.command_manager.run_command(rules_kwargs["command_message"])
         except NotMatchCommandError as e:
             logger.error(f"未匹配到命令: {repr(e)}", exc_info=True)
+            event_data.reply(f"未匹配到命令: {e}")
             return
         except CommandMatchError as e:
             logger.info(f"命令匹配错误: {repr(e)}", exc_info=True)
@@ -596,7 +786,8 @@ class CommandMatcher(EventHandlers.Matcher):
                         handler_kwargs["state"] = StateManager.get_state(state_id, self.plugin_data)
                     handler_kwargs["user_state"] = StateManager.get_state(f"u{event_data.user_id}", self.plugin_data)
                     if isinstance(event_data, EventClassifier.GroupMessageEvent):
-                        handler_kwargs["group_state"] = StateManager.get_state(f"g{event_data.group_id}", self.plugin_data)
+                        handler_kwargs["group_state"] = StateManager.get_state(f"g{event_data.group_id}",
+                                                                               self.plugin_data)
 
                 handler_kwargs.update(rules_kwargs)
                 handler_kwargs = inject_dependencies(handler, handler_kwargs)
@@ -660,7 +851,6 @@ def on_command(command: str,
     rules += [EventHandlers.CommandRule(command, aliases, command_start, reply, no_args)]
     if any(not isinstance(rule, EventHandlers.Rule) for rule in rules):
         raise TypeError("rules must be a list of Rule")
-        raise TypeError("rules must be a list of Rule")
     plugin_data = PluginManager.get_caller_plugin_data()
     events_matcher = CommandMatcher(plugin_data, rules)
     matchers.append((priority, events_matcher))
@@ -669,10 +859,15 @@ def on_command(command: str,
 
 if __name__ == '__main__':
     test_command_manager = CommandManager()
+    print(f"/email get {OptionalArg(IntArg("email_id"))} {OptionalArg(EnumArg("color", [
+        Literal("red"), Literal("green"), Literal("blue")
+    ]), "red")}")
     test_command_manager.register_command(
         parsing_command_def(f"/email send {IntArg("email_id")} {GreedySegments("message")}"))
     test_command_manager.register_command(
-        parsing_command_def(f"/email get {OptionalArg(IntArg("email_id"))} {OptionalArg(TextArg("color"), "red")}"))
+        parsing_command_def(f"/email get {OptionalArg(IntArg("email_id"))} {OptionalArg(EnumArg("color", [
+            Literal("red"), Literal("green"), Literal("blue")
+        ]), "red")}"))
     test_command_manager.register_command(
         parsing_command_def(f"/email set image {IntArg("email_id")} {ImageSegmentArg("image")}"))
     test_command_manager.register_command(Literal('/git', [
@@ -698,10 +893,11 @@ if __name__ == '__main__':
     print(test_command_manager.run_command(QQRichText.QQRichText(QQRichText.Text("/email send 123 abc ded 213")))[0])
     print(test_command_manager.run_command(QQRichText.QQRichText(QQRichText.Text("/email get")))[0])
     print(test_command_manager.run_command(QQRichText.QQRichText(QQRichText.Text("/email get 123")))[0])
-    print(test_command_manager.run_command(QQRichText.QQRichText(QQRichText.Text("/email get 123 456")))[0])
+    print(test_command_manager.run_command(QQRichText.QQRichText(QQRichText.Text("/email get 123 red")))[0])
     print(test_command_manager.run_command(
         QQRichText.QQRichText(
             QQRichText.Text("/email set image 123456"),
             QQRichText.Image("file://123")
         )
     )[0])
+    print(test_command_manager.run_command(QQRichText.QQRichText(QQRichText.Text("/email sne")))[0])
