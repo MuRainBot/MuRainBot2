@@ -90,7 +90,7 @@ class BaseArg(metaclass=ArgMeta):
     基础命令参数类，请勿直接使用
     """
 
-    def __init__(self, arg_name, next_arg_list=None):
+    def __init__(self, arg_name: str, next_arg_list=None):
         self.arg_name = arg_name
         if next_arg_list is None:
             next_arg_list = []
@@ -212,10 +212,11 @@ class BaseArg(metaclass=ArgMeta):
         return {}
 
     @classmethod
-    def get_instance_from_config(cls, arg_name, config: dict[str, str]) -> "BaseArg":
+    def get_instance_from_config(cls, arg_name: str, config: dict[str, str]) -> "BaseArg":
         """
         从配置中创建实例
         Args:
+            arg_name: 参数名称
             config: 配置
 
         Returns:
@@ -229,14 +230,40 @@ class BaseArg(metaclass=ArgMeta):
 
 
 class Literal(BaseArg):
+    def __init__(self, arg_name: str, aliases: set[str] = None, next_arg_list=None):
+        super().__init__(arg_name, next_arg_list)
+        if aliases is None:
+            aliases = set()
+        self.aliases = aliases
+        self.command_list = {self.arg_name, *self.aliases}
+
+    def get_config(self) -> dict:
+        """
+        获取当前实例的配置
+        """
+        return {"aliases": self.aliases}
+
     def matcher(self, remaining_cmd: QQRichText.QQRichText) -> bool:
         if remaining_cmd.strip().rich_array[0].type == "text":
-            return remaining_cmd.strip().rich_array[0].data.get("text").startswith(self.arg_name)
+            return any(remaining_cmd.strip().rich_array[0].data.get("text").startswith(_) for _ in self.command_list)
         return False
 
     def handler(self, remaining_cmd: QQRichText.QQRichText) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
+        text_to_match = remaining_cmd.strip().rich_array[0].data.get("text", "")
+
+        sorted_commands = sorted(self.command_list, key=len, reverse=True)
+
+        matched_command = None
+        for command in sorted_commands:
+            if text_to_match.startswith(command):
+                matched_command = command
+                break
+
+        if matched_command is None:
+            raise ValueError(f"命令不匹配当前任意参数: {', '.join(self.command_list)}")
+
         return {}, QQRichText.QQRichText(
-            QQRichText.Text(remaining_cmd.rich_array[0].data.get("text", "").split(self.arg_name, 1)[-1]),
+            QQRichText.Text(text_to_match.split(matched_command, 1)[-1]),
             *remaining_cmd.rich_array[1:])
 
 
@@ -267,6 +294,42 @@ class OptionalArg(BaseArg):
 
     def handler(self, remaining_cmd: QQRichText.QQRichText) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
         return self.wrapped_arg.handler(remaining_cmd)
+
+
+class SkipOptionalArg(BaseArg):
+    def __init__(self, arg: BaseArg, default: Any = None):
+        if not isinstance(default, Union[str, bytes, int, float, tuple, list, dict, set, bool, None]):
+            raise TypeError("Default value must be a basic type.(strings, bytes, numbers, tuples, lists, dicts, "
+                            "sets, booleans, and None.)")
+        if not isinstance(arg, BaseArg):
+            raise TypeError("Argument must be an instance of BaseArg.")
+        # 名字继承自被包装的参数
+        super().__init__(arg.arg_name)
+        self.wrapped_arg = arg
+        self.default = default
+        # 可选参数也可能有自己的子节点
+        self.next_arg_list = self.wrapped_arg.next_arg_list
+
+    def get_config(self):
+        return {"wrapped_arg": str(self.wrapped_arg), "default": repr(self.default)}
+
+    @classmethod
+    def get_instance_from_config(cls, arg_name, config: dict[str, str]) -> "BaseArg":
+        config = {
+            k: ast.literal_eval(v)
+            for k, v in config.items()
+        }
+        config["wrapped_arg"] = parsing_command_def(config["wrapped_arg"])
+        return cls(**config)
+
+    def node_str(self):
+        return f"SkipOptional({self.wrapped_arg.node_str()}, default={self.default!r})"
+    def handler(self, remaining_cmd: QQRichText.QQRichText) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
+        try:
+            return self.wrapped_arg.handler(remaining_cmd)
+        except Exception as e:
+            logger.debug(f"SkipOptionalArg内的参数处理出错，自动跳过: {repr(e)}", exc_info=True)
+            return {self.wrapped_arg.arg_name: self.default}, remaining_cmd
 
 
 class IntArg(BaseArg):
@@ -870,8 +933,8 @@ if __name__ == '__main__':
         ]), "red")}"))
     test_command_manager.register_command(
         parsing_command_def(f"/email set image {IntArg("email_id")} {ImageSegmentArg("image")}"))
-    test_command_manager.register_command(Literal('/git', [
-        Literal('push', [
+    test_command_manager.register_command(Literal('/git', next_arg_list=[
+        Literal('push', next_arg_list=[
             TextArg(
                 'remote', [
                     TextArg('branch')
@@ -879,7 +942,7 @@ if __name__ == '__main__':
             )
         ]
                 ),
-        Literal('pull', [
+        Literal('pull', next_arg_list=[
             TextArg(
                 'remote', [
                     TextArg('branch')
