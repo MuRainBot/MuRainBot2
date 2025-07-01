@@ -41,8 +41,8 @@ def encode_arg(arg: str):
     Returns:
         编码后的参数
     """
-    return (arg.replace("<", "%3C").replace("[", "%5B").replace(">", "%3E").replace("]", "%5D")
-            .replace(",", "%2C"))
+    return (arg.replace("%", "%25").replace("<", "%3C").replace("[", "%5B")
+            .replace(">", "%3E").replace("]", "%5D").replace(",", "%2C"))
 
 
 def decode_arg(arg: str):
@@ -54,8 +54,8 @@ def decode_arg(arg: str):
     Returns:
         解码后的参数
     """
-    return (arg.replace("%3C", "<").replace("%5B", "[").replace("%3E", ">").replace("%5D", "]")
-            .replace("%2C", ","))
+    return (arg.replace("%3C", "<").replace("%5B", "[").replace("%3E", ">")
+            .replace("%5D", "]").replace("%2C", ",").replace("%25", "%"))
 
 
 class NotMatchCommandError(Exception):
@@ -272,7 +272,7 @@ class OptionalArg(BaseArg):
     一个包装器，用来标记一个参数是可选的。
     """
 
-    def __init__(self, arg: BaseArg, default: Any = None):
+    def __init__(self, arg: BaseArg, default: Union[str, bytes, int, float, tuple, list, dict, set, bool, None] = None):
         if not isinstance(default, Union[str, bytes, int, float, tuple, list, dict, set, bool, None]):
             raise TypeError("Default value must be a basic type.(strings, bytes, numbers, tuples, lists, dicts, "
                             "sets, booleans, and None.)")
@@ -297,7 +297,7 @@ class OptionalArg(BaseArg):
 
 
 class SkipOptionalArg(BaseArg):
-    def __init__(self, arg: BaseArg, default: Any = None):
+    def __init__(self, arg: BaseArg, default: Union[str, bytes, int, float, tuple, list, dict, set, bool, None] = None):
         if not isinstance(default, Union[str, bytes, int, float, tuple, list, dict, set, bool, None]):
             raise TypeError("Default value must be a basic type.(strings, bytes, numbers, tuples, lists, dicts, "
                             "sets, booleans, and None.)")
@@ -311,7 +311,7 @@ class SkipOptionalArg(BaseArg):
         self.next_arg_list = self.wrapped_arg.next_arg_list
 
     def get_config(self):
-        return {"wrapped_arg": str(self.wrapped_arg), "default": repr(self.default)}
+        return {"arg": str(self.wrapped_arg), "default": repr(self.default)}
 
     @classmethod
     def get_instance_from_config(cls, arg_name, config: dict[str, str]) -> "BaseArg":
@@ -319,11 +319,13 @@ class SkipOptionalArg(BaseArg):
             k: ast.literal_eval(v)
             for k, v in config.items()
         }
-        config["wrapped_arg"] = parsing_command_def(config["wrapped_arg"])
+        # print(config["arg"])
+        config["arg"] = parsing_command_def(config["arg"])
         return cls(**config)
 
     def node_str(self):
         return f"SkipOptional({self.wrapped_arg.node_str()}, default={self.default!r})"
+
     def handler(self, remaining_cmd: QQRichText.QQRichText) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
         try:
             return self.wrapped_arg.handler(remaining_cmd)
@@ -454,6 +456,7 @@ def parsing_command_def(command_def: str) -> BaseArg:
                     v = decode_arg(v)
                     # print(k, v)
                     arg_configs[k] = v
+                    arg_config = ""
             else:
                 raise ValueError("参数定义错误")
         elif char == ">":
@@ -479,6 +482,7 @@ def parsing_command_def(command_def: str) -> BaseArg:
                     else:
                         command_tree = arg
                     arg_name = ""
+                    arg_configs = {}
                 else:
                     raise ValueError(f"参数定义错误: 未知的参数类型 {arg_type}")
             else:
@@ -507,6 +511,7 @@ def parsing_command_def(command_def: str) -> BaseArg:
                     else:
                         command_tree = arg
                     arg_name = ""
+                    arg_configs = {}
                 else:
                     raise ValueError(f"参数定义错误: 未知的参数类型 {arg_type}")
             else:
@@ -668,6 +673,10 @@ class CommandManager:
         """
         kwargs = {}
         command = command.strip()
+        # 先对command_list重排序，第一个是literal的放前面，然后再根据literal的长度排序
+        self.command_list.sort(
+            key=lambda x: max(len(c) for c in x.command_list) if isinstance(x, Literal) else 0, reverse=True
+        )
         for command_def in self.command_list:
             if command_def.matcher(command):
                 now_command_def = command_def
@@ -922,9 +931,16 @@ def on_command(command: str,
 
 if __name__ == '__main__':
     test_command_manager = CommandManager()
-    print(f"/email get {OptionalArg(IntArg("email_id"))} {OptionalArg(EnumArg("color", [
-        Literal("red"), Literal("green"), Literal("blue")
-    ]), "red")}")
+    languages = [Literal("python", {"py"}),]
+    cmd = (f"codeshare "
+           f"{SkipOptionalArg(EnumArg("language", languages), "guess")}")
+    print(cmd)
+    print(repr(parsing_command_def(cmd)))
+    cmd = (f"codeshare "
+           f"{OptionalArg(SkipOptionalArg(EnumArg("language", languages)), "guess")}"
+           f"{OptionalArg(GreedySegments("code"))}")
+    print(cmd)
+    print(repr(parsing_command_def(cmd)))
     test_command_manager.register_command(
         parsing_command_def(f"/email send {IntArg("email_id")} {GreedySegments("message")}"))
     test_command_manager.register_command(
