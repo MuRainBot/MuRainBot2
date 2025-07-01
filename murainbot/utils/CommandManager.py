@@ -112,7 +112,10 @@ class BaseArg(metaclass=ArgMeta):
         """
         生成当前节点配置文件的字符串形式
         """
-        return f"{prefix if self.get_config() else ""}{", ".join(f"{k}={encode_arg(repr(v))}" for k, v in self.get_config().items())}"
+        res = ", ".join(f"{k}={encode_arg(repr(v))}" for k, v in self.get_config().items())
+        if res:
+            res = prefix + res
+        return res
 
     def _generate_repr_lines(self, prefix="", is_last=True):
         """
@@ -311,7 +314,7 @@ class SkipOptionalArg(BaseArg):
         self.next_arg_list = self.wrapped_arg.next_arg_list
 
     def get_config(self):
-        return {"arg": str(self.wrapped_arg), "default": repr(self.default)}
+        return {"arg": str(self.wrapped_arg), "default": self.default}
 
     @classmethod
     def get_instance_from_config(cls, arg_name, config: dict[str, str]) -> "BaseArg":
