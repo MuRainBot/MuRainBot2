@@ -70,6 +70,7 @@ def print_loading(wait_str):
 def start(work_path=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))):
     global is_done
     paths.init_paths(work_path)
+    paths.paths.ensure_all_dirs_exist()
     banner = BANNER.split("\n")
     color_banner = ""
     # 输出banner
