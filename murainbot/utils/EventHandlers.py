@@ -284,13 +284,13 @@ class CommandRule(Rule):
 
         # 将回复消息段添加到消息段列表中(如果有)
         if reply_segment is not None:
-            res_message = message + reply_segment
+            res_message = QQRichText.QQRichText(reply_segment, message)
         else:
             res_message = message
 
-        event_data.message = message
+        event_data.message = res_message
         event_data.raw_message = string_message
-        return True, {"command_message": res_message}
+        return True, {"command_message": message}
 
 
 def _to_me(event_data: EventClassifier.MessageEvent):
