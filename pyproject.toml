@@ -4,14 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "murainbot"
-version = "0.0.1"
+version = "0.1.0"
 authors = [
   { name="Xiaosu", email="xiaosu@xiaosu.icu" },
 ]
 description = "一个基于python适配onebot11协议的轻量级Onebot框架/QQ机器人框架/QQBot框架"
 requires-python = ">=3.12"
 dependencies = [
-    "coloredlogs~=15.0.1",
     "requests~=2.32.3",
     "PyYAML~=6.0.2",
     "Flask~=3.1.1",
