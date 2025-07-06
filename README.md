@@ -108,17 +108,32 @@ MuRainBot2 (MRB2) 是一个基于 Python、适配 OneBot v11 协议的轻量级�
 
 **本项目使用 Python 3.12+ 开发，并利用了其部分新特性 (如 [PEP 701](https://docs.python.org/zh-cn/3/whatsnew/3.12.html#whatsnew312-pep701))。推荐使用 Python 3.12 或更高版本运行，如果使用 Python 3.12 以下版本，由于未经测试，可能会导致部分代码出现问题。**
 
-详细的部署步骤、配置说明和插件开发指南，请查阅：
+~~详细~~的部署步骤、配置说明和插件开发指南，请查阅：
 
 ### ➡️ [**MRB2 官方文档**](https://mrb2.xiaosu.icu)
 
+#### 快速部署指南
+
+- 安装murainbot2
+  ```bash
+  pip install murainbot
+  ```
+- 创建项目
+  ```bash
+  murainbot init
+  ```
+- 启动项目
+  ```bash
+  murainbot run
+  ```
+
 ## 📕 关于版本
 
-* 目前项目仍在开发中，属于测试版，未来还可能会有一些不兼容更改和新功能添加
+* 目前项目仍在开发中，属于测试版，未来还可能会有一些不兼容更改和新功能添加，也欢迎各位提供宝贵的建设性的意见。
 
 ## ❤️ 鸣谢 ❤️
 
-**贡献指南：** 我们欢迎各种形式的贡献！包括 Issues 和 Pull Request，您可以向我们反馈 bug 提供建议，也可以通过 PR 直接帮我们编写代码来实现功能或者修复bug。请将您的 Pull Request 提交到 `dev` 分支。我们会定期将 `dev` 分支的稳定更新合并到 `master` 分支。
+**贡献指南：** 我们欢迎各种形式的贡献！包括 Issues 和 Pull Request，您可以向我们反馈 bug 提供建议，请求一些新功能，也可以通过 PR 直接帮我们编写代码来实现功能或者修复bug。请将您的 Pull Request 提交到 `dev` 分支。我们会定期将 `dev` 分支的稳定更新合并到 `master` 分支。
 
 **感谢所有为 MRB2 付出努力的贡献者！**
 
