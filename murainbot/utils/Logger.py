@@ -75,7 +75,6 @@ class CustomRichHandler(logging.Handler):
                 )
                 message = record.getMessage()
 
-            # --- 核心渲染逻辑在这里 ---
             log_renderable = self.render(
                 record=record,
                 message=message,
@@ -110,23 +109,41 @@ class CustomRichHandler(logging.Handler):
         # 使用 rich 的内置日志样式
         path_text = Text(path, style="log.path", justify="right")
 
-        log_table = Table.grid(expand=True, padding=(0, 1))
-        log_table.add_column(style="log.time")
-        log_table.add_column(width=6)
-        log_table.add_column(ratio=1)
-        log_table.add_column(style="log.path")
+        single_line_table = Table.grid(expand=True, padding=(0, 1))
+        single_line_table.add_column(style="log.time")
+        single_line_table.add_column(width=6)
+        single_line_table.add_column(ratio=1)
+        single_line_table.add_column(style="log.path")
+        single_line_table.add_row(time_text, level_text, message_text, path_text)
 
-        log_table.add_row(
-            time_text,
-            level_text,
-            message_text,
-            path_text
-        )
+        capture_console = Console(width=self.console.width, record=True)
+        with capture_console.capture() as capture:
+            capture_console.print(single_line_table)
 
-        if traceback:
-            return Group(log_table, traceback)
+        # 3. 分析捕获到的字符串，判断行数
+        # .strip() 是为了去掉可能的尾部换行符
+        rendered_text = capture.get().strip()
+        is_multiline = "\n" in rendered_text
+
+        if not is_multiline:
+            # 如果没有换行符，说明单行搞定
+            final_layout = single_line_table
         else:
-            return log_table
+            # 否则，切换到健壮的两行布局
+            meta_table = Table.grid(expand=True, padding=(0, 1))
+            meta_table.add_column(style="log.time")
+            meta_table.add_column(width=6)
+            meta_table.add_column(ratio=1)
+            meta_table.add_column(style="log.path")
+            meta_table.add_row(time_text, level_text, Text(r"↩"), path_text)
+
+            final_layout = Group(meta_table, message_text)
+
+        # --- 组合最终布局和 Traceback ---
+        if traceback:
+            return Group(final_layout, traceback)
+        else:
+            return final_layout
 
 
 def init(logs_path: str = None, logger_level: int = logging.INFO):
