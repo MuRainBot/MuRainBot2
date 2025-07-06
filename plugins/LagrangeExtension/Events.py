@@ -3,7 +3,7 @@ Lagrange的一些拓展事件
 """
 from typing import TypedDict
 
-from Lib.utils import EventClassifier, Logger, QQDataCacher
+from murainbot.utils import EventClassifier, Logger, QQDataCacher
 
 logger = Logger.get_logger()
 

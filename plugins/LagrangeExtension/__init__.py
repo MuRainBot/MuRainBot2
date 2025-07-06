@@ -9,7 +9,7 @@ Lagrange实现端扩展插件
 可能更新不及时，如果有偏差请再issue内告诉我或者直接跟我提pr
 """
 
-from Lib.core import PluginManager
+from murainbot.core import PluginManager
 
 plugin_info = PluginManager.PluginInfo(
     NAME="LagrangeExtension",

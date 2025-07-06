@@ -2,8 +2,8 @@
 自动重启 Onebot 实现端
 """
 
-from Lib.utils import EventClassifier, Logger, Actions
-from Lib.core import ConfigManager, EventManager, ThreadPool
+from murainbot.utils import EventClassifier, Logger, Actions
+from murainbot.core import ConfigManager, EventManager, ThreadPool
 
 import time
 

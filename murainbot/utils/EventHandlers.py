@@ -2,12 +2,11 @@
 事件处理器
 """
 import copy
-import inspect
 from typing import Literal, Callable, Any, Type
 
-from Lib.common import save_exc_dump
-from Lib.core import EventManager, ConfigManager, PluginManager
-from Lib.utils import EventClassifier, Logger, QQRichText, StateManager
+from murainbot.common import save_exc_dump, inject_dependencies
+from murainbot.core import EventManager, ConfigManager, PluginManager
+from murainbot.utils import EventClassifier, Logger, QQRichText, StateManager
 
 logger = Logger.get_logger()
 
@@ -17,13 +16,15 @@ class Rule:
     Rule基类，请勿直接使用
     """
 
-    def match(self, event_data: EventClassifier.Event):
+    def match(self, event_data: EventClassifier.Event) -> bool | tuple[bool, dict[str, Any]]:
         """
         匹配事件
         Args:
             event_data: 事件数据
         Returns:
             是否匹配到事件
+            或
+            是否匹配到事件，对原始函数进行的依赖注入的参数
         """
         pass
 
@@ -47,7 +48,19 @@ class AnyRule(Rule):
         self.rules = rules
 
     def match(self, event_data: EventClassifier.Event):
-        return any(rule.match(event_data) for rule in self.rules)
+        rules_kwargs = {}
+        flag = False
+        for rule in self.rules:
+            res = rule.match(event_data)
+            if isinstance(res, tuple):
+                res, rule_kwargs = res
+                rules_kwargs.update(rule_kwargs)
+            if res:
+                flag = True
+                break
+        if flag:
+            return True, rules_kwargs
+        return False
 
 
 class AllRule(Rule):
@@ -59,7 +72,19 @@ class AllRule(Rule):
         self.rules = rules
 
     def match(self, event_data: EventClassifier.Event):
-        return all(rule.match(event_data) for rule in self.rules)
+        rules_kwargs = {}
+        flag = False
+        for rule in self.rules:
+            res = rule.match(event_data)
+            if isinstance(res, tuple):
+                res, rule_kwargs = res
+                rules_kwargs.update(rule_kwargs)
+            if not res:
+                flag = True
+                break
+        if flag:
+            return False
+        return True, rules_kwargs
 
 
 class KeyValueRule(Rule):
@@ -211,13 +236,7 @@ class CommandRule(Rule):
             segments = segments[1:]
             is_at = True
 
-        # 将消息段转换为字符串消息，并去除前导空格
-        message = str(QQRichText.QQRichText(segments))
-        while len(message) > 0 and message[0] == " ":
-            message = message[1:]
-
-        # 重新将处理后的消息转换为QQRichText对象，并获取其字符串表示
-        string_message = str(QQRichText.QQRichText(message))
+        string_message = str(QQRichText.QQRichText(*segments).strip())
 
         # 生成所有可能的命令前缀组合，包括命令起始符和别名
         commands = [_ + self.command for _ in self.command_start]
@@ -265,11 +284,13 @@ class CommandRule(Rule):
 
         # 将回复消息段添加到消息段列表中(如果有)
         if reply_segment is not None:
-            message.rich_array.insert(0, reply_segment)
+            res_message = QQRichText.QQRichText(reply_segment, message)
+        else:
+            res_message = message
 
-        event_data.message = message
+        event_data.message = res_message
         event_data.raw_message = string_message
-        return True
+        return True, {"command_message": message}
 
 
 def _to_me(event_data: EventClassifier.MessageEvent):
@@ -298,10 +319,15 @@ to_me = FuncRule(_to_me)
 
 class Matcher:
     """
-    事件处理器
+    事件匹配器
     """
 
-    def __init__(self):
+    def __init__(self, plugin_data, rules: list[Rule] = None):
+        rules = rules if rules else []
+        if any(not isinstance(rule, Rule) for rule in rules):
+            raise TypeError("rules must be a list of Rule")
+        self.rules = rules
+        self.plugin_data = plugin_data
         self.handlers = []
 
     def register_handler(self, priority: int = 0, rules: list[Rule] = None, *args, **kwargs):
@@ -323,47 +349,68 @@ class Matcher:
 
         return wrapper
 
-    def match(self, event_data: EventClassifier.Event, plugin_data: dict):
+    def check_match(self, event_data: EventClassifier.Event) -> tuple[bool, dict | None]:
+        """
+        检查事件是否匹配该匹配器
+        Args:
+            event_data: 事件数据
+
+        Returns:
+            是否匹配, 规则返回的依赖注入参数
+        """
+        rules_kwargs = {}
+        try:
+            for rule in self.rules:
+                res = rule.match(event_data)
+                if isinstance(res, tuple):
+                    res, rule_kwargs = res
+                    rules_kwargs.update(rule_kwargs)
+                if not res:
+                    return False, None
+        except Exception as e:
+            logger.error(f"匹配事件处理器时出错: {repr(e)}", exc_info=True)
+            return False, None
+        return True, rules_kwargs
+
+    def match(self, event_data: EventClassifier.Event, rules_kwargs: dict):
         """
         匹配事件处理器
         Args:
             event_data: 事件数据
-            plugin_data: 插件数据
+            rules_kwargs: 规则返回的注入参数
         """
         for priority, rules, handler, args, kwargs in sorted(self.handlers, key=lambda x: x[0], reverse=True):
             try:
-                if not all(rule.match(event_data) for rule in rules):
+                handler_kwargs = kwargs.copy()  # 复制静态 kwargs
+                rules_kwargs = rules_kwargs.copy()
+                flag = False
+                for rule in rules:
+                    res = rule.match(event_data)
+                    if isinstance(res, tuple):
+                        res, rule_kwargs = res
+                        rules_kwargs.update(rule_kwargs)
+                    if not res:
+                        flag = True
+                        break
+                if flag:
                     continue
 
                 # 检测依赖注入
-                handler_kwargs = kwargs.copy()  # 复制静态 kwargs
+                if isinstance(event_data, EventClassifier.MessageEvent):
+                    if event_data.message_type == "private":
+                        state_id = f"u{event_data.user_id}"
+                    elif event_data.message_type == "group":
+                        state_id = f"g{event_data["group_id"]}_u{event_data.user_id}"
+                    else:
+                        state_id = None
+                    if state_id:
+                        handler_kwargs["state"] = StateManager.get_state(state_id, self.plugin_data)
+                    handler_kwargs["user_state"] = StateManager.get_state(f"u{event_data.user_id}", self.plugin_data)
+                    if isinstance(event_data, EventClassifier.GroupMessageEvent):
+                        handler_kwargs["group_state"] = StateManager.get_state(f"g{event_data.group_id}", self.plugin_data)
 
-                sig = inspect.signature(handler)
-
-                for name, param in sig.parameters.items():
-                    if name == "state":
-                        if isinstance(event_data, EventClassifier.MessageEvent):
-                            if event_data.message_type == "private":
-                                state_id = f"u{event_data.user_id}"
-                            elif event_data.message_type == "group":
-                                state_id = f"g{event_data["group_id"]}_u{event_data.user_id}"
-                            else:
-                                raise TypeError("event_data.message_type must be private or group")
-                        else:
-                            raise TypeError("event_data must be a MessageEvent")
-                        handler_kwargs[name] = StateManager.get_state(state_id, plugin_data)
-                    elif name == "user_state":
-                        if isinstance(event_data, EventClassifier.MessageEvent):
-                            state_id = f"u{event_data.user_id}"
-                        else:
-                            raise TypeError("event_data must be a MessageEvent")
-                        handler_kwargs[name] = StateManager.get_state(state_id, plugin_data)
-                    elif name == "group_state":
-                        if isinstance(event_data, EventClassifier.GroupMessageEvent):
-                            state_id = f"g{event_data.group_id}"
-                        else:
-                            raise TypeError("event_data must be a MessageEvent")
-                        handler_kwargs[name] = StateManager.get_state(state_id, plugin_data)
+                handler_kwargs.update(rules_kwargs)
+                handler_kwargs = inject_dependencies(handler, handler_kwargs)
 
                 result = handler(event_data, *args, **handler_kwargs)
 
@@ -382,15 +429,15 @@ class Matcher:
                 )
 
 
-events_matchers: dict[str, dict[Type[EventClassifier.Event], list[tuple[int, list[Rule], Matcher]]]] = {}
+events_matchers: dict[str, dict[Type[EventClassifier.Event], list[tuple[int, Matcher]]]] = {}
 
 
-def _on_event(event_data, path, event_type, plugin_data):
-    matchers = events_matchers[path][event_type]
-    for priority, rules, matcher in sorted(matchers, key=lambda x: x[0], reverse=True):
+def _on_event(event_data, path):
+    for priority, matcher in sorted(events_matchers[path][event_data.__class__], key=lambda x: x[0], reverse=True):
         matcher_event_data = event_data.__class__(event_data.event_data)
-        if all(rule.match(matcher_event_data) for rule in rules):
-            matcher.match(matcher_event_data, plugin_data)
+        is_match, rules_kwargs = matcher.check_match(matcher_event_data)
+        if is_match:
+            matcher.match(matcher_event_data, rules_kwargs)
 
 
 def on_event(event: Type[EventClassifier.Event], priority: int = 0, rules: list[Rule] = None):
@@ -415,7 +462,7 @@ def on_event(event: Type[EventClassifier.Event], priority: int = 0, rules: list[
         events_matchers[path] = {}
     if event not in events_matchers[path]:
         events_matchers[path][event] = []
-        EventManager.event_listener(event, path=path, event_type=event, plugin_data=plugin_data)(_on_event)
-    events_matcher = Matcher()
-    events_matchers[path][event].append((priority, rules, events_matcher))
+        EventManager.event_listener(event, path=path)(_on_event)
+    events_matcher = Matcher(plugin_data, rules)
+    events_matchers[path][event].append((priority, events_matcher))
     return events_matcher

@@ -5,23 +5,20 @@
 import dataclasses
 import importlib
 import inspect
+import os
 import sys
 
-from Lib.common import save_exc_dump
-from Lib.constants import *
-from Lib.core import ConfigManager
-from Lib.core.EventManager import event_listener
-from Lib.core.ListenerServer import EscalationEvent
-from Lib.utils.Logger import get_logger
+from murainbot.common import save_exc_dump
+from murainbot.paths import paths
+from murainbot.core import ConfigManager
+from murainbot.core.EventManager import event_listener
+from murainbot.core.ListenerServer import EscalationEvent
+from murainbot.utils.Logger import get_logger
 
 logger = get_logger()
 
 plugins: list[dict] = []
 found_plugins: list[dict] = []
-has_main_func_plugins: list[dict] = []
-
-if not os.path.exists(PLUGINS_PATH):
-    os.makedirs(PLUGINS_PATH)
 
 
 class NotEnabledPluginException(Exception):
@@ -43,7 +40,7 @@ def load_plugin(plugin):
 
     # 计算导入路径
     # 获取相对于 WORK_PATH 的路径，例如 "plugins/AIChat" 或 "plugins/single_file_plugin.py"
-    relative_plugin_path = os.path.relpath(full_path, start=WORK_PATH)
+    relative_plugin_path = os.path.relpath(full_path, start=paths.WORK_PATH)
 
     # 将路径分隔符替换为点，例如 "plugins.AIChat" 或 "plugins.single_file_plugin"
     import_path = relative_plugin_path.replace(os.sep, '.')
@@ -51,10 +48,6 @@ def load_plugin(plugin):
         import_path = import_path[:-3]  # 去掉 .py 后缀
 
     logger.debug(f"计算 {name} 得到的导入路径: {import_path}")
-
-    if WORK_PATH not in sys.path:
-        logger.warning(f"项目根目录 {WORK_PATH} 不在 sys.path 中，正在添加。请检查执行环境。")
-        sys.path.insert(0, WORK_PATH)  # 插入到前面，优先查找
 
     try:
         logger.debug(f"尝试加载: {import_path}")
@@ -81,12 +74,17 @@ def load_plugins():
     """
     global plugins, found_plugins
 
+    work_dir_str = str(paths.WORK_PATH.resolve())
+    if work_dir_str not in sys.path:
+        logger.debug(f"将项目工作目录 '{work_dir_str}' 添加到 sys.path。")
+        sys.path.insert(0, work_dir_str)
+
     found_plugins = []
     # 获取插件目录下的所有文件
-    for plugin in os.listdir(PLUGINS_PATH):
+    for plugin in os.listdir(paths.PLUGINS_PATH):
         if plugin == "__pycache__":
             continue
-        full_path = os.path.join(PLUGINS_PATH, plugin)
+        full_path = os.path.join(paths.PLUGINS_PATH, plugin)
         if (
                 os.path.isdir(full_path) and
                 os.path.exists(os.path.join(full_path, "__init__.py")) and
@@ -198,46 +196,23 @@ def requirement_plugin(plugin_name: str):
         raise FileNotFoundError(f"插件 {plugin_name} 不存在或不符合要求，无法加载依赖")
 
 
-# 该方法已被弃用
-def run_plugin_main(event_data):
-    """
-    运行插件的main函数
-    Args:
-        event_data: 事件数据
-    """
-    global has_main_func_plugins
-    for plugin in has_main_func_plugins:
-        logger.debug(f"执行插件: {plugin['name']}")
-        try:
-            plugin["plugin"].main(event_data, WORK_PATH)
-        except Exception as e:
-            logger.error(f"执行插件{plugin['name']}时发生错误: {repr(e)}")
-            continue
-
-
-@event_listener(EscalationEvent)
-def run_plugin_main_wrapper(event):
-    """
-    运行插件的main函数
-    Args:
-        event: 事件
-    """
-    run_plugin_main(event.event_data)
-
-
-def get_caller_plugin_data():
+def get_caller_plugin_data(ignore_self=False):
     """
     获取调用者的插件数据
-    :return:
+    Args:
+         ignore_self: bool，是否忽略第一个是插件调用者
+    Returns:
         plugin_data: dict | None
     """
+
+    skip_self_flag = None if ignore_self else True
 
     stack = inspect.stack()[1:]
     for frame_info in stack:
         filename = frame_info.filename
 
         normalized_filename = os.path.normpath(filename)
-        normalized_plugins_path = os.path.normpath(PLUGINS_PATH)
+        normalized_plugins_path = os.path.normpath(paths.PLUGINS_PATH)
 
         if normalized_filename.startswith(normalized_plugins_path):
             for plugin in found_plugins:
@@ -245,9 +220,14 @@ def get_caller_plugin_data():
                 plugin_dir, plugin_file = os.path.split(normalized_plugin_file_path)
 
                 if plugin_dir == normalized_plugins_path:
-                    if normalized_plugin_file_path == normalized_filename:
-                        return plugin
+                    if normalized_plugin_file_path != normalized_filename:
+                        continue
                 else:
-                    if normalized_filename.startswith(plugin_dir):
+                    if not normalized_filename.startswith(plugin_dir):
+                        continue
+                if skip_self_flag is None:
+                    skip_self_flag = plugin
+                else:
+                    if plugin != skip_self_flag:
                         return plugin
     return None

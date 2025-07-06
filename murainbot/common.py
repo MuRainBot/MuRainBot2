@@ -1,6 +1,7 @@
 """
 工具
 """
+import inspect
 import os.path
 import shutil
 import sys
@@ -9,10 +10,11 @@ import time
 import uuid
 from collections import OrderedDict
 from io import BytesIO
+from typing import Callable
 
 import requests
 
-from .constants import *
+from .paths import paths
 from .utils import Logger
 
 logger = Logger.get_logger()
@@ -93,13 +95,13 @@ def download_file_to_cache(url: str, headers=None, file_name: str = "",
         file_name = uuid.uuid4().hex + ".cache"
 
     if download_path is None:
-        file_path = os.path.join(CACHE_PATH, file_name)
+        file_path = os.path.join(paths.CACHE_PATH, file_name)
     else:
         file_path = os.path.join(download_path, file_name)
 
     # 路径不存在特判
-    if not os.path.exists(CACHE_PATH):
-        os.makedirs(CACHE_PATH)
+    if not os.path.exists(paths.CACHE_PATH):
+        os.makedirs(paths.CACHE_PATH)
 
     try:
         # 下载
@@ -131,9 +133,9 @@ def clean_cache() -> None:
     Returns:
         None
     """
-    if os.path.exists(CACHE_PATH):
+    if os.path.exists(paths.CACHE_PATH):
         try:
-            shutil.rmtree(CACHE_PATH, ignore_errors=True)
+            shutil.rmtree(paths.CACHE_PATH, ignore_errors=True)
         except Exception as e:
             logger.warning("删除缓存时报错，报错信息: %s" % repr(e))
 
@@ -223,7 +225,7 @@ def save_exc_dump(description: str = None, path: str = None):
     """
     # 扫描是否存在非当前日期且为归档的exc_dump
     exc_dump_files = [
-        file for file in os.listdir(DUMPS_PATH) if file.startswith("coredumpy_") and file.endswith(".dump")
+        file for file in os.listdir(paths.DUMPS_PATH) if file.startswith("coredumpy_") and file.endswith(".dump")
     ]
 
     today_date = time.strftime("%Y%m%d")
@@ -232,8 +234,8 @@ def save_exc_dump(description: str = None, path: str = None):
     for file in exc_dump_files:
         file_date = file.split("coredumpy_", 1)[1].split("_", 1)[0][:len("YYYYMMDD")]
         if file_date != today_date:
-            os.makedirs(os.path.join(DUMPS_PATH, f"coredumpy_archive_{file_date}"), exist_ok=True)
-            os.rename(os.path.join(DUMPS_PATH, file), os.path.join(DUMPS_PATH, f"coredumpy_archive_{file_date}", file))
+            os.makedirs(os.path.join(paths.DUMPS_PATH, f"coredumpy_archive_{file_date}"), exist_ok=True)
+            os.rename(os.path.join(paths.DUMPS_PATH, file), os.path.join(paths.DUMPS_PATH, f"coredumpy_archive_{file_date}", file))
             if file_date not in date_flags:
                 logger.info(f"已自动归档 {file_date} 的异常堆栈到 coredumpy_archive_{file_date}")
                 date_flags.append(file_date)
@@ -260,12 +262,12 @@ def save_exc_dump(description: str = None, path: str = None):
         i = 0
         while True:
             if i > 0:
-                path_ = os.path.join(DUMPS_PATH,
+                path_ = os.path.join(paths.DUMPS_PATH,
                                      f"coredumpy_"
-                                     f"{time.strftime('%Y%m%d%-H%M%S')}_"
+                                     f"{time.strftime('%Y%m%d-%H%M%S')}_"
                                      f"{frame.f_code.co_name}_{i}.dump")
             else:
-                path_ = os.path.join(DUMPS_PATH,
+                path_ = os.path.join(paths.DUMPS_PATH,
                                      f"coredumpy_"
                                      f"{time.strftime('%Y%m%d-%H%M%S')}_"
                                      f"{frame.f_code.co_name}.dump")
@@ -297,7 +299,7 @@ def bytes_io_to_file(
         io_bytes: BytesIO,
         file_name: str | None = None,
         file_type: str | None = None,
-        save_dir: str = CACHE_PATH
+        save_dir: str = paths.CACHE_PATH
 ):
     """
     将BytesIO对象保存成文件，并返回路径
@@ -322,3 +324,33 @@ def bytes_io_to_file(
     with open(os.path.join(save_dir, file_name), "wb") as f:
         f.write(io_bytes.getvalue())
     return os.path.join(save_dir, file_name)
+
+
+def inject_dependencies(func: Callable, dependencies: dict):
+    """
+    一个简单的依赖注入函数。
+
+    它会检查`func`的签名，并从`dependencies`字典中找到匹配的参数进行注入，
+    然后执行函数并返回其结果。
+
+    参数:
+        func (function): 需要被注入依赖并执行的目标函数。
+        dependencies (dict): 一个包含可用依赖项的字典，键是依赖项的名称。
+
+    返回:
+        dict: 包含注入的依赖项的参数字典。
+    """
+    # 1. 获取函数的签名
+    sig = inspect.signature(func)
+
+    # 2. 准备一个字典，用于存放需要传递给函数的参数
+    kwargs_to_pass = {}
+
+    # 3. 遍历函数签名的所有参数
+    for param_name in sig.parameters:
+        # 4. 如果参数名存在于我们的依赖字典中
+        if param_name in dependencies:
+            # 5. 将对应的键值对添加到准备传递的参数字典中
+            kwargs_to_pass[param_name] = dependencies[param_name]
+
+    return kwargs_to_pass

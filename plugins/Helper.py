@@ -9,8 +9,8 @@ MRB2示例插件 - 帮助插件
 #  | |  | | |_| |  _ < (_| | | | | | | |_) | (_) | |_
 #  |_|  |_|\__,_|_| \_\__,_|_|_| |_| |____/ \___/ \__|
 
-from Lib import *
-from Lib.core import PluginManager, ConfigManager
+from murainbot import *
+from murainbot.core import PluginManager, ConfigManager
 
 logger = Logger.get_logger()
 
@@ -43,55 +43,28 @@ def get_help_text():
     return text
 
 
-rule = EventHandlers.CommandRule("help", aliases={"帮助"})
-
-matcher = EventHandlers.on_event(EventClassifier.MessageEvent, priority=0, rules=[rule])
+matcher = CommandManager.on_command("help", {"帮助"})
 
 
-@matcher.register_handler()
-def on_help(event_data: EventClassifier.MessageEvent):
+@matcher.register_command(f"help {CommandManager.OptionalArg(CommandManager.TextArg("plugin_name"))}")
+def on_help(event_data: CommandManager.CommandEvent, plugin_name: str = None):
     """
     帮助命令处理
     """
-    cmd = str(event_data.message).strip().split(" ", 1)
-    if len(cmd) == 1:
-        Actions.SendMsg(
-            message=QQRichText.QQRichText(
-                QQRichText.Reply(event_data["message_id"]),
-                QQRichText.Text(get_help_text())
-            ),
-            **{"group_id": event_data["group_id"]}
-            if event_data["message_type"] == "group" else
-            {"user_id": event_data["user_id"]}
-        ).call()
+    if plugin_name is None:
+        event_data.reply(get_help_text())
     else:
-        plugin_name = cmd[1].lower()
+        plugin_name = plugin_name.lower()
         for plugin in PluginManager.plugins:
             try:
                 plugin_info = plugin["info"]
                 if plugin_info is None:
                     continue
                 if plugin_info.NAME.lower() == plugin_name and plugin_info.IS_HIDDEN is False:
-                    Actions.SendMsg(
-                        message=QQRichText.QQRichText(
-                            QQRichText.Reply(event_data["message_id"]),
-                            QQRichText.Text(plugin_info.HELP_MSG + "\n----------\n发送/help以获取全部的插件帮助信息")
-                        ),
-                        **{"group_id": event_data["group_id"]}
-                        if event_data["message_type"] == "group" else
-                        {"user_id": event_data["user_id"]}
-                    ).call()
+                    event_data.reply(plugin_info.HELP_MSG + "\n----------\n发送/help以获取全部的插件帮助信息")
                     return
             except Exception as e:
                 logger.warning(f"获取插件{plugin['name']}信息时发生错误: {repr(e)}")
                 continue
         else:
-            Actions.SendMsg(
-                message=QQRichText.QQRichText(
-                    QQRichText.Reply(event_data["message_id"]),
-                    QQRichText.Text("没有找到此插件，请检查是否有拼写错误")
-                ),
-                **{"group_id": event_data["group_id"]}
-                if event_data["message_type"] == "group" else
-                {"user_id": event_data["user_id"]}
-            ).call()
+            event_data.reply("没有找到此插件，请检查是否有拼写错误")
