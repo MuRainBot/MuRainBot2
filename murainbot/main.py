@@ -1,14 +1,19 @@
 import atexit
 import logging
 import os
-import random
 import sys
 import threading
 import time
 
+from rich.console import Console
+from rich.live import Live
+from rich.spinner import Spinner
+from rich.style import Style
+from rich.text import Text
+
 from murainbot import paths
 
-is_done = False
+console = Console()
 
 BANNER = r""" __  __       ____       _         ____        _   _____ 
 |  \/  |_   _|  _ \ __ _(_)_ __   | __ )  ___ | |_|___  \
@@ -19,22 +24,6 @@ BANNER_LINK = "https://github.com/MuRainBot/MuRainBot2"
 
 banner_start_color = (14, 190, 255)
 banner_end_color = (255, 66, 179)
-
-
-def color_text(text: str, text_color: tuple[int, int, int] = None, bg_color: tuple[int, int, int] = None):
-    """
-    富文本生成器
-    @param text: 文本
-    @param text_color: 文本颜色
-    @param bg_color: 背景颜色
-    @return: 富文本
-    """
-    text = text + "\033[0m" if text_color is not None or bg_color is not None else text
-    if text_color is not None:
-        text = f"\033[38;2;{text_color[0]};{text_color[1]};{text_color[2]}m" + text
-    if bg_color is not None:
-        text = f"\033[48;2;{bg_color[0]};{bg_color[1]};{bg_color[2]}m" + text
-    return text
 
 
 def get_gradient(start_color: tuple[int, int, int], end_color: tuple[int, int, int], length: float):
@@ -52,51 +41,38 @@ def get_gradient(start_color: tuple[int, int, int], end_color: tuple[int, int, i
     )
 
 
-def print_loading(wait_str):
-    """
-    输出加载动画
-    """
-    loading_string_list = [r"|/-\\", r"▁▂▃▄▅▆▇█▇▆▅▄▃▂", "\u2801\u2808\u2810\u2820\u2880\u2900\u2804\u2802", r"←↖↑↗→↘↓↙"]
-    loading_string = random.choice(loading_string_list)
-    i = 0
-    while not is_done:
-        if i == len(loading_string):
-            i = 0
-        print("\r" + wait_str + color_text(loading_string[i], banner_start_color), end="")
-        time.sleep(0.07)
-        i += 1
-
-
 def start(work_path=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))):
-    global is_done
+    """
+    启动MRB2
+    Args:
+        work_path: MRB2实例的工作目录，默认为安装目录，谨慎填写
+    """
     paths.init_paths(work_path)
     paths.paths.ensure_all_dirs_exist()
-    banner = BANNER.split("\n")
-    color_banner = ""
-    # 输出banner
-    for i in range(len(banner)):
-        for j in range(len(banner[i])):
-            color_banner += color_text(
-                banner[i][j],
-                get_gradient(
-                    banner_start_color,
-                    banner_end_color,
-                    ((j / (len(banner[i]) - 1) + i / (len(banner) - 1)) / 2)
-                )
-            )
-        color_banner += "\n"
 
-    print(color_banner.strip())
+    banner_lines = BANNER.split("\n")
+    rich_banner = Text()
+    for i, line in enumerate(banner_lines):
+        for j, char in enumerate(line):
+            # 计算当前字符的渐变颜色
+            gradient_pos = ((j / (len(line) - 1) + i / (len(banner_lines) - 1)) / 2)
+            r, g, b = get_gradient(banner_start_color, banner_end_color, gradient_pos)
+            # 使用 rich.style.Style 添加颜色
+            style = Style(color=f"rgb({r},{g},{b})")
+            rich_banner.append(char, style=style)
+        rich_banner.append("\n")
 
-    # 输出项目链接
-    for c in color_text(BANNER_LINK, get_gradient(banner_start_color, banner_end_color, 0.5)):
-        print(c, end="")
+    console.print(rich_banner, end="")
 
-    wait_str = color_text("正在加载 Lib, 首次启动可能需要几秒钟，请稍等...", banner_start_color)
-    print("\n" + wait_str, end="")
+    link_color = get_gradient(banner_start_color, banner_end_color, 0.5)
+    link_text = Text(BANNER_LINK, style=f"rgb({link_color[0]},{link_color[1]},{link_color[2]})")
+    link_text.stylize(f"link {BANNER_LINK}")
+    console.print(link_text)
 
-    threading.Thread(target=print_loading, daemon=True, args=(wait_str,)).start()
+    loading_text = f"[rgb({banner_start_color[0]},{banner_start_color[1]},{banner_start_color[2]})]正在加载 Lib, 首次启动可能需要几秒钟，请稍等...[/]"
 
+    live = Live(Spinner("dots", text=loading_text), console=console, transient=True)
+    live.start()
     # 开始加载
     start_loading = time.time()
 
@@ -114,14 +90,13 @@ def start(work_path=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from .utils import AutoRestartOnebot
 
     Logger.set_logger_level(logging.DEBUG if ConfigManager.GlobalConfig().debug.enable else logging.INFO)
+    live.stop()
 
-    is_done = True
-
-    print("\r" + color_text(
-        f"Lib 加载完成！耗时: {round(time.time() - start_loading, 2)}s 正在启动 MuRainBot...  ",
-        banner_end_color
+    # Live 动画结束后，打印加载完成信息
+    end_color_str = f"rgb({banner_end_color[0]},{banner_end_color[1]},{banner_end_color[2]})"
+    console.print(
+        f"[{end_color_str}]Lib 加载完成！耗时: {round(time.time() - start_loading, 2)}s 正在启动 MuRainBot...[/]"
     )
-          )
 
     logger = Logger.get_logger()
 
