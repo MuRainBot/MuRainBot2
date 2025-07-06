@@ -75,7 +75,6 @@ class CustomRichHandler(logging.Handler):
                 )
                 message = record.getMessage()
 
-            # --- 核心渲染逻辑在这里 ---
             log_renderable = self.render(
                 record=record,
                 message=message,
