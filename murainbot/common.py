@@ -3,6 +3,7 @@
 """
 import inspect
 import os.path
+import urllib.parse
 import shutil
 import sys
 import threading
@@ -10,6 +11,7 @@ import time
 import uuid
 from collections import OrderedDict
 from io import BytesIO
+from pathlib import Path
 from typing import Callable
 
 import requests
@@ -54,66 +56,102 @@ def restart() -> None:
         sys.exit()
 
 
-def download_file_to_cache(url: str, headers=None, file_name: str = "",
-                           download_path: str = None, stream=False, fake_headers: bool = True) -> str | None:
+def download_file_to_cache(url: str,
+                           headers=None,
+                           file_name: str = paths.CACHE_PATH,
+                           max_size: int = None,
+                           timeout: int = 30,
+                           download_path: str = None,
+                           stream=True,
+                           fake_headers: bool = True) -> str | None:
     """
     下载文件到缓存
+    **请自行保证下载链接的安全性**
     Args:
         url: 下载的url
         headers: 下载请求的请求头
         file_name: 文件名
+        max_size: 最大大小，单位字节，None则为不限制
+        timeout: 请求超时时间
         download_path: 下载路径
         stream: 是否使用流式传输
         fake_headers: 是否使用自动生成的假请求头
     Returns:
-        文件路径
+        文件路径，如果请求失败则返回None
     """
     if headers is None:
         headers = {}
 
     if fake_headers:
-        headers["User-Agent"] = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                                 "Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.42")
-        headers["Accept-Language"] = "zh-CN,zh;q=0.9,en;q=0.8,da;q=0.7,ko;q=0.6"
-        headers["Accept-Encoding"] = "gzip, deflate, br"
-        headers["Accept"] = ("text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,"
-                             "application/signed-exchange;v=b3;q=0.7")
-        headers["Connection"] = "keep-alive"
-        headers["Upgrade-Insecure-Requests"] = "1"
-        headers["Cache-Control"] = "max-age=0"
-        headers["Sec-Fetch-Dest"] = "document"
-        headers["Sec-Fetch-Mode"] = "navigate"
-        headers["Sec-Fetch-Site"] = "none"
-        headers["Sec-Fetch-User"] = "?1"
-        headers["Sec-Ch-Ua"] = "\"Chromium\";v=\"113\", \"Not-A.Brand\";v=\"24\", \"Microsoft Edge\";v=\"113\""
-        headers["Sec-Ch-Ua-Mobile"] = "?0"
-        headers["Sec-Ch-Ua-Platform"] = "\"Windows\""
-        headers["Host"] = url.split("/")[2]
+        headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                          "Chrome/113.0.0.0 Safari/537.36 Edg/113.0.1774.42",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,da;q=0.7,ko;q=0.6",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,"
+                      "application/signed-exchange;v=b3;q=0.7",
+            "Connection": "keep-alive",
+            "Host": urllib.parse.urlparse(url).hostname
+        })
 
     # 路径拼接
-    if file_name == "":
+    if file_name is None:
         file_name = uuid.uuid4().hex + ".cache"
 
-    if download_path is None:
-        file_path = os.path.join(paths.CACHE_PATH, file_name)
-    else:
-        file_path = os.path.join(download_path, file_name)
-
-    # 路径不存在特判
-    if not os.path.exists(paths.CACHE_PATH):
-        os.makedirs(paths.CACHE_PATH)
+    file_path = Path(download_path) / file_name
+    if paths.CACHE_PATH in file_path.parents:
+        try:
+            if not file_path.resolve().is_relative_to(paths.CACHE_PATH.resolve()):
+                logger.warning("下载文件失败: 文件路径解析后超出缓存目录")
+                return None
+        except FileNotFoundError:
+            pass
+    file_path = str(file_path)
 
     try:
         # 下载
         if stream:
-            with open(file_path, "wb") as f, requests.get(url, stream=True, headers=headers) as res:
-                for chunk in res.iter_content(chunk_size=64 * 1024):
-                    if not chunk:
-                        break
-                    f.write(chunk)
+            # 使用流式下载
+            with requests.get(url, stream=True, timeout=timeout, headers=headers) as res:
+                res.raise_for_status()  # 请求失败则抛出异常
+
+                # 优先从Content-Length判断
+                content_length = res.headers.get('Content-Length')
+                if max_size and content_length and int(content_length) > max_size:
+                    logger.warning(f"下载中止: 文件大小 ({content_length} B) 超出限制 ({max_size} B)")
+                    return None
+
+                downloaded_size = 0
+                with open(file_path, "wb") as f:
+                    for chunk in res.iter_content(chunk_size=8192):
+                        downloaded_size += len(chunk)
+                        if max_size and downloaded_size > max_size:
+                            logger.warning(f"下载中止: 文件在传输过程中超出大小限制 ({max_size} B)")
+                            f.close()
+                            os.remove(file_path)
+                            return None
+                        f.write(chunk)
         else:
             # 不使用流式传输
+            if max_size is not None:
+                # 获取响应头
+                res = requests.head(url, timeout=timeout, headers=headers)
+                if "Content-Length" in res.headers:
+                    # 获取响应头中的Content-Length
+                    content_length = int(res.headers["Content-Length"])
+                    if content_length > max_size:
+                        logger.warning(f"下载中止: 文件大小 ({content_length} B) 超出限制 ({max_size} B)")
+                        return None
+                else:
+                    logger.warning(f"下载文件失败: HEAD请求未获取到文件大小，建议使用流式传输")
+                    return None
+
             res = requests.get(url, headers=headers)
+            res.raise_for_status()
+
+            if len(res.content) > max_size:
+                logger.warning(f"下载中止: 文件在传输过程中超出大小限制 ({max_size} B)")
+                return None
 
             with open(file_path, "wb") as f:
                 f.write(res.content)
