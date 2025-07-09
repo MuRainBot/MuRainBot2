@@ -6,6 +6,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+from typing import Generator
 from urllib.parse import urlparse
 
 from murainbot.common import save_exc_dump
@@ -1125,6 +1126,43 @@ class JSON(Segment):
         return json.loads(self.json_data)
 
 
+def _create_segment_from_dict(segment_dict: dict) -> Segment:
+    """从单个字典（array格式）创建Segment对象"""
+    # 这个辅助函数和你代码中的对象化逻辑是一样的
+    segment_type = segment_dict.get("type")
+    if segment_type in segments_map:
+        try:
+            params = inspect.signature(segments_map[segment_type]).parameters
+            kwargs = {}
+            data = segment_dict.get("data", {})
+            for param in params:
+                if param in data:
+                    kwargs[param] = data[param]
+                elif param == "id_":
+                    kwargs[param] = data.get("id")
+                elif param == "type_":
+                    kwargs[param] = data.get("type")
+                elif params[param].default != params[param].empty:
+                    kwargs[param] = params[param].default
+
+            segment = segments_map[segment_type](**kwargs)
+
+            for k, v in data.items():
+                if k not in segment.data:
+                    segment.set_data(k, v)
+            return segment
+        except Exception as e:
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(f"转换{segment_dict}时失败")
+            else:
+                dump_path = None
+            Logger.get_logger().warning(f"转换{segment_dict}时失败，报错信息: {repr(e)}"
+                                        f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                                        exc_info=True)
+            return Segment(segment_dict)
+    return Segment(segment_dict)
+
+
 class QQRichText:
     """
     QQ富文本
@@ -1139,70 +1177,36 @@ class QQRichText:
         Args:
             *rich: 富文本内容，可为 str、dict、list、tuple、Segment、QQRichText
         """
+        # __init__ 现在只做一件事：消费一个生成器来构建最终的列表
+        self.rich_array: list[Segment] = list(self._iter_and_convert_segments(rich))
 
-        # 特判
-        self.rich_array: list[Segment] = []
+    def _iter_and_convert_segments(self, rich_items) -> Generator[Segment, None, None]:
+        """
+        核心优化：单遍处理所有输入，并直接 yield 最终的 Segment 对象。
+        这完美实现了你“合并处理”的想法。
+        """
+        # 1. 扁平化初始输入
+        if len(rich_items) == 1 and isinstance(rich_items[0], (list, tuple)):
+            rich_items = rich_items[0]
 
-        if len(rich) == 1 and isinstance(rich[0], (list, tuple)):
-            rich = rich[0]
-
-        # 识别输入的是CQCode or json形式的富文本
-        # 如果输入的是CQCode，则转换为json形式的富文本
-
-        # 处理CQCode
-        array = []
-        for item in rich:
-            if isinstance(item, dict):
-                array.append(item)
-            elif isinstance(item, str):
-                array += cq_2_array(item)
+        # 2. 单遍处理所有项目
+        for item in rich_items:
+            # 分类处理，直接生成并yield Segment对象
+            if any(isinstance(item, segment) for segment in segments) and not isinstance(item, Segment):
+                yield item
+            elif isinstance(item, Segment):
+                yield _create_segment_from_dict(item.array)
             elif isinstance(item, QQRichText):
-                array += item.rich_array
+                yield from item.rich_array
+            elif isinstance(item, str):
+                for arr in cq_2_array(item):
+                    yield _create_segment_from_dict(arr)
+            elif isinstance(item, dict):
+                yield _create_segment_from_dict(item)
+            elif isinstance(item, (list, tuple)):
+                yield from self._iter_and_convert_segments(item)
             else:
-                for segment in segments:
-                    if isinstance(item, segment):
-                        array.append(item.array)
-                        break
-                else:
-                    raise TypeError("QQRichText: 输入类型错误")
-        rich = array
-
-        # 将rich转换为的Segment
-        for i in range(len(rich)):
-            if rich[i]["type"] in segments_map:
-                try:
-                    params = inspect.signature(segments_map[rich[i]["type"]]).parameters
-                    kwargs = {}
-                    for param in params:
-                        if param in rich[i]["data"]:
-                            kwargs[param] = rich[i]["data"][param]
-                        else:
-                            if param == "id_":
-                                kwargs[param] = rich[i]["data"].get("id")
-                            elif param == "type_":
-                                kwargs[param] = rich[i]["data"].get("type")
-                            else:
-                                if params[param].default != params[param].empty:
-                                    kwargs[param] = params[param].default
-                    segment = segments_map[rich[i]["type"]](**kwargs)
-                    # 检查原cq中是否含有不在segment的data中的参数
-                    for k, v in rich[i]["data"].items():
-                        if k not in segment["data"]:
-                            segment.set_data(k, v)
-                    rich[i] = segment
-                except Exception as e:
-                    if ConfigManager.GlobalConfig().debug.save_dump:
-                        dump_path = save_exc_dump(f"转换{rich[i]}时失败")
-                    else:
-                        dump_path = None
-                    Logger.get_logger().warning(f"转换{rich[i]}时失败，报错信息: {repr(e)}"
-                                                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                                                exc_info=True)
-                    rich[i] = Segment(rich[i])
-            else:
-                rich[i] = Segment(rich[i])
-
-        self.rich_array: list[Segment] = rich
+                raise TypeError(f"QQRichText: 不支持的输入类型 {type(item)}")
 
     def render(self, group_id: int | None = None):
         """
