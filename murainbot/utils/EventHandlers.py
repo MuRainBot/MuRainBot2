@@ -304,9 +304,9 @@ def _to_me(event_data: EventClassifier.MessageEvent):
     if not isinstance(event_data, EventClassifier.MessageEvent):
         logger.warning(f"event {event_data} is not a MessageEvent, cannot match to_me")
         return False
-    if event_data.message_type == "private":
+    if event_data.is_private:
         return True
-    if event_data.message_type == "group":
+    if event_data.is_group:
         for rich in event_data.message.rich_array:
             if (isinstance(rich, QQRichText.At) and str(rich.data.get("qq")) ==
                     str(ConfigManager.GlobalConfig().account.user_id)):
@@ -397,9 +397,9 @@ class Matcher:
 
                 # 检测依赖注入
                 if isinstance(event_data, EventClassifier.MessageEvent):
-                    if event_data.message_type == "private":
+                    if event_data.is_private:
                         state_id = f"u{event_data.user_id}"
-                    elif event_data.message_type == "group":
+                    elif event_data.is_group:
                         state_id = f"g{event_data["group_id"]}_u{event_data.user_id}"
                     else:
                         state_id = None
