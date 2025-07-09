@@ -831,7 +831,7 @@ class CommandMatcher(EventHandlers.Matcher):
             else:
                 priority, rules, handler, args, kwargs, handler_command_def = handler
 
-            if command_def and handler_command_def != command_def:
+            if command_def and handler_command_def != command_def and handler_command_def:
                 continue
 
             try:
