@@ -38,24 +38,22 @@ class GetGroupFileUrl(Actions.Action):
     """
 
     @staticmethod
-    def call_func(group_id: int, file_id: str, busid: str):
+    def call_func(group_id: int, file_id: str):
         return OnebotAPI.api.get("get_group_file_url",
-                                 {"group_id": group_id, "file_id": file_id,
-                                  "busid": busid})
+                                 {"group_id": group_id, "file_id": file_id,})
 
-    def __init__(self, group_id: int, file_id: str, busid: str, callback: Callable[[Actions.Result], ...] = None):
+    def __init__(self, group_id: int, file_id: str, callback: Callable[[Actions.Result], ...] = None):
         """
         Args:
             group_id: 群 Uin
             file_id: 文件 ID
-            busid: none
             callback: 回调函数
         """
-        super().__init__(group_id=group_id, file_id=file_id, busid=busid, callback=callback)
+        super().__init__(group_id=group_id, file_id=file_id, callback=callback)
 
-    def logger(self, result, group_id: int, file_id: str, busid: str):
+    def logger(self, result, group_id: int, file_id: str):
         logger.debug(
-            f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 文件链接, file_id: {file_id}, busid: {busid}")
+            f"获取群 {QQDataCacher.get_group_info(group_id).group_name}({group_id}) 文件链接, file_id: {file_id}")
 
 
 class GetGroupRootFiles(Actions.Action):
