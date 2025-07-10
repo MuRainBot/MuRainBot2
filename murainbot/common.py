@@ -58,10 +58,10 @@ def restart() -> None:
 
 def download_file_to_cache(url: str,
                            headers=None,
-                           file_name: str = paths.CACHE_PATH,
+                           file_name: str = None,
                            max_size: int = None,
                            timeout: int = 30,
-                           download_path: str = None,
+                           download_path: str = paths.CACHE_PATH,
                            stream=True,
                            fake_headers: bool = True) -> str | None:
     """
