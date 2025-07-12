@@ -609,7 +609,7 @@ class CommandEvent(EventClassifier.MessageEvent):
         return Actions.SendMsg(
             message=message,
             **{"group_id": self["group_id"]}
-            if self.message_type == "group" else
+            if self.is_group else
             {"user_id": self.user_id}
         ).call()
 
@@ -630,16 +630,9 @@ class CommandEvent(EventClassifier.MessageEvent):
                 message
             ),
             **{"group_id": self["group_id"]}
-            if self.message_type == "group" else
+            if self.is_group else
             {"user_id": self.user_id}
         ).call()
-
-    @property
-    def is_group(self) -> bool:
-        """
-        判断是否为群消息
-        """
-        return self.message_type == "group"
 
 
 class CommandManager:
@@ -851,9 +844,9 @@ class CommandMatcher(EventHandlers.Matcher):
 
                 # 检测依赖注入
                 if isinstance(event_data, EventClassifier.MessageEvent):
-                    if event_data.message_type == "private":
+                    if event_data.is_private:
                         state_id = f"u{event_data.user_id}"
-                    elif event_data.message_type == "group":
+                    elif event_data.is_group:
                         state_id = f"g{event_data["group_id"]}_u{event_data.user_id}"
                     else:
                         state_id = None

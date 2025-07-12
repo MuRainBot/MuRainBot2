@@ -141,6 +141,20 @@ class MessageEvent(Event):
         self.message_id: int = int(self["message_id"])
         self.sender: SenderDict = self["sender"]
 
+    @property
+    def is_group(self) -> bool:
+        """
+        判断是否为群聊消息
+        """
+        return self.message_type == "group"
+
+    @property
+    def is_private(self) -> bool:
+        """
+        判断是否为私聊消息
+        """
+        return self.message_type == "private"
+
 
 @register_event("message", message_type="private")
 class PrivateMessageEvent(MessageEvent):
@@ -151,6 +165,20 @@ class PrivateMessageEvent(MessageEvent):
     def __init__(self, event_data):
         super().__init__(event_data)
         self.sender: PrivateDict = self["sender"]
+
+    @property
+    def is_from_friend(self) -> bool:
+        """
+        判断是否为好友消息
+        """
+        return self.sub_type == "friend"
+
+    @property
+    def is_from_group_temp(self) -> bool:
+        """
+        判断是否为群临时会话
+        """
+        return self.sub_type == "group"
 
     def logger(self):
         if self.sub_type == "friend":
@@ -214,6 +242,45 @@ class GroupMessageEvent(MessageEvent):
         self.group_id: int = int(self["group_id"])
         self.sender: GroupSenderDict = self["sender"]
 
+    @property
+    def is_normal(self) -> bool:
+        """
+        判断是否为普通消息
+        """
+        return self.sub_type == "normal"
+
+    @property
+    def is_anonymous(self) -> bool:
+        """
+        判断是否为匿名消息
+        """
+        return self.sub_type == "anonymous"
+
+    @property
+    def is_from_owner(self) -> bool:
+        """
+        判断消息是否由群主发送
+        """
+        return self.sender.get("role") == "owner"
+
+    @property
+    def is_from_admin(self) -> bool:
+        """
+        判断消息是否由管理员发送
+        """
+        return self.sender.get("role") == "admin"
+
+    def is_at_me(self) -> bool:
+        """
+        判断消息是否@了机器人
+        """
+        # 此处假设 self.message.segments 是一个包含消息段的列表
+        # 且 @ 消息段的格式为 {'type': 'at', 'data': {'qq': '被@的QQ号'}}
+        for segment in self.message.segments:
+            if segment.get("type") == "at" and segment.get("data", {}).get("qq") == str(self.self_id):
+                return True
+        return False
+
     def logger(self):
         if self.sub_type == "normal":
             logger.info(
@@ -234,7 +301,7 @@ class GroupMessageEvent(MessageEvent):
 
         elif self.sub_type == "anonymous":
             anonymous_data = self.get('anonymous', {})
-            anonymous_str = f"{QQDataCacher.get_user_info(anonymous_data['id']).nickname}"\
+            anonymous_str = f"{QQDataCacher.get_user_info(anonymous_data['id']).nickname}" \
                 if anonymous_data else "匿名用户"
             anonymous_detail = f"({anonymous_data['id']}; flag: {anonymous_data['flag']})" if anonymous_data else ""
             logger.info(
@@ -322,6 +389,20 @@ class GroupAdminEvent(NoticeEvent):
         self.user_id: int = int(self["user_id"])
         self.sub_type: str = self["sub_type"]
 
+    @property
+    def is_set(self) -> bool:
+        """
+        判断是否为设置管理员
+        """
+        return self.sub_type == "set"
+
+    @property
+    def is_unset(self) -> bool:
+        """
+        判断是否为取消管理员
+        """
+        return self.sub_type == "unset"
+
 
 @register_event("notice", notice_type="group_admin", sub_type="set")
 class GroupSetAdminEvent(GroupAdminEvent):
@@ -371,6 +452,27 @@ class GroupDecreaseEvent(NoticeEvent):
         self.user_id: int = int(self["user_id"])
         self.operator_id = int(self["operator_id"])
         self.sub_type: str = self["sub_type"]
+
+    @property
+    def is_leave(self) -> bool:
+        """
+        判断是否为主动退群
+        """
+        return self.sub_type == "leave"
+
+    @property
+    def is_kick(self) -> bool:
+        """
+        判断是否为被踢
+        """
+        return self.sub_type == "kick"
+
+    @property
+    def is_self_kicked(self) -> bool:
+        """
+        判断是否是机器人自己被踢
+        """
+        return self.sub_type == "kick_me"
 
 
 @register_event("notice", notice_type="group_decrease", sub_type="leave")
@@ -443,6 +545,20 @@ class GroupIncreaseEvent(NoticeEvent):
         self.operator_id: int = int(self["operator_id"])
         self.sub_type: str = self["sub_type"]
 
+    @property
+    def was_approved(self) -> bool:
+        """
+        判断是否为管理员同意入群
+        """
+        return self.sub_type == "approve"
+
+    @property
+    def was_invited(self) -> bool:
+        """
+        判断是否为被邀请入群
+        """
+        return self.sub_type == "invite"
+
 
 @register_event("notice", notice_type="group_increase", sub_type="approve")
 class GroupIncreaseApproveEvent(GroupIncreaseEvent):
@@ -500,6 +616,27 @@ class GroupBanEvent(NoticeEvent):
         self.sub_type: str = self["sub_type"]
         self.duration: int = int(self["duration"])
 
+    @property
+    def is_ban(self) -> bool:
+        """
+        判断是否为禁言
+        """
+        return self.sub_type == "ban"
+
+    @property
+    def is_unban(self) -> bool:
+        """
+        判断是否为解除禁言
+        """
+        return self.sub_type == "lift_ban"
+
+    @property
+    def is_whole_group_ban(self) -> bool:
+        """
+        判断是否为全员禁言/解禁 (user_id为0时)
+        """
+        return self.user_id == 0
+
 
 @register_event("notice", notice_type="group_ban", sub_type="ban")
 class GroupBanSetEvent(GroupBanEvent):
@@ -508,13 +645,14 @@ class GroupBanSetEvent(GroupBanEvent):
     """
 
     def logger(self):
+        member_str = "全体成员" if self.is_whole_group_ban else \
+            f"成员 {QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}({self.user_id})"
+
         logger.info(
             f"群 "
             f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
-            f"内成员 "
-            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
-            f"({self.user_id}) "
+            f"内 {member_str} "
             f"被管理员 "
             f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
@@ -530,13 +668,14 @@ class GroupBanLiftEvent(GroupBanEvent):
     """
 
     def logger(self):
+        member_str = "全体成员" if self.is_whole_group_ban else \
+            f"成员 {QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}({self.user_id})"
+
         logger.info(
             f"群 "
             f"{QQDataCacher.get_group_info(self.group_id).group_name}"
             f"({self.group_id}) "
-            f"内成员 "
-            f"{QQDataCacher.get_group_member_info(self.group_id, self.user_id).get_nickname()}"
-            f"({self.user_id}) "
+            f"内 {member_str} "
             f"被管理员 "
             f"{QQDataCacher.get_group_member_info(self.group_id, self.operator_id).get_nickname()}"
             f"({self.operator_id}) "
@@ -576,8 +715,15 @@ class GroupRecallEvent(NoticeEvent):
         self.operator_id: int = int(self["operator_id"])
         self.message_id: int = int(self["message_id"])
 
+    @property
+    def is_recalled_by_operator(self) -> bool:
+        """
+        判断是否被管理员撤回 (操作者不是消息发送者本人)
+        """
+        return self.user_id != self.operator_id
+
     def logger(self):
-        if self.user_id == self.operator_id:
+        if not self.is_recalled_by_operator:
             logger.info(
                 f"群 "
                 f"{QQDataCacher.get_group_info(self.group_id).group_name}"
@@ -636,6 +782,13 @@ class GroupPokeEvent(NoticeEvent):
         self.group_id: int = int(self["group_id"])
         self.user_id: int = int(self["user_id"])
         self.target_id: int = int(self["target_id"])
+
+    @property
+    def is_poked_me(self) -> bool:
+        """
+        判断是否是机器人被戳
+        """
+        return self.target_id == self.self_id
 
     def logger(self):
         logger.info(
@@ -805,6 +958,20 @@ class GroupRequestEvent(RequestEvent):
         self.group_id: int = int(self["group_id"])
         self.user_id: int = int(self["user_id"])
 
+    @property
+    def is_add_request(self) -> bool:
+        """
+        判断是否为加群请求
+        """
+        return self.sub_type == "add"
+
+    @property
+    def is_invite_request(self) -> bool:
+        """
+        判断是否为邀请机器人入群请求
+        """
+        return self.sub_type == "invite"
+
 
 @register_event("request", request_type="group", sub_type="add")
 class GroupAddRequestEvent(GroupRequestEvent):
@@ -860,13 +1027,34 @@ class LifecycleMetaEvent(MetaEvent):
         super().__init__(event_data)
         self.sub_type: str = self["sub_type"]
 
+    @property
+    def is_enable(self) -> bool:
+        """
+        判断是否为 OneBot 启用
+        """
+        return self.sub_type == "enable"
+
+    @property
+    def is_disable(self) -> bool:
+        """
+        判断是否为 OneBot 禁用
+        """
+        return self.sub_type == "disable"
+
+    @property
+    def is_connect(self) -> bool:
+        """
+        判断是否为 OneBot 连接成功
+        """
+        return self.sub_type == "connect"
+
     def logger(self):
         logger.info(
             f"收到元事件: " + {
                 "enable": "OneBot 启用",
                 "disable": "OneBot 禁用",
                 "connect": "OneBot 连接成功"
-            }[self.sub_type]
+            }.get(self.sub_type, f"未知的生命周期事件: {self.sub_type}")
         )
 
 

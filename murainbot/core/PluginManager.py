@@ -7,18 +7,51 @@ import importlib
 import inspect
 import os
 import sys
+from types import ModuleType
+from typing import TypedDict
 
 from murainbot.common import save_exc_dump
 from murainbot.paths import paths
 from murainbot.core import ConfigManager
-from murainbot.core.EventManager import event_listener
-from murainbot.core.ListenerServer import EscalationEvent
 from murainbot.utils.Logger import get_logger
 
 logger = get_logger()
 
-plugins: list[dict] = []
-found_plugins: list[dict] = []
+
+@dataclasses.dataclass
+class PluginInfo:
+    """
+    插件信息
+    """
+    NAME: str  # 插件名称
+    AUTHOR: str  # 插件作者
+    VERSION: str  # 插件版本
+    DESCRIPTION: str  # 插件描述
+    HELP_MSG: str  # 插件帮助
+    ENABLED: bool = True  # 插件是否启用
+    IS_HIDDEN: bool = False  # 插件是否隐藏（在/help命令中）
+    extra: dict | None = None  # 一个字典，可以用于存储任意信息。其他插件可以通过约定 extra 字典的键名来达成收集某些特殊信息的目的。
+
+    def __post_init__(self):
+        if not self.ENABLED:
+            raise NotEnabledPluginException
+        if self.extra is None:
+            self.extra = {}
+
+
+class PluginDict(TypedDict):
+    """
+    插件信息字典
+    """
+    name: str
+    plugin: ModuleType | None
+    info: PluginInfo | None
+    file_path: str
+    path: str
+
+
+plugins: list[PluginDict] = []
+found_plugins: list[PluginDict] = []
 
 
 class NotEnabledPluginException(Exception):
@@ -135,27 +168,6 @@ def load_plugins():
             continue
 
         logger.debug(f"插件 {name}({full_path}) 加载成功！")
-
-
-@dataclasses.dataclass
-class PluginInfo:
-    """
-    插件信息
-    """
-    NAME: str  # 插件名称
-    AUTHOR: str  # 插件作者
-    VERSION: str  # 插件版本
-    DESCRIPTION: str  # 插件描述
-    HELP_MSG: str  # 插件帮助
-    ENABLED: bool = True  # 插件是否启用
-    IS_HIDDEN: bool = False  # 插件是否隐藏（在/help命令中）
-    extra: dict | None = None  # 一个字典，可以用于存储任意信息。其他插件可以通过约定 extra 字典的键名来达成收集某些特殊信息的目的。
-
-    def __post_init__(self):
-        if self.ENABLED is not True:
-            raise NotEnabledPluginException
-        if self.extra is None:
-            self.extra = {}
 
 
 def requirement_plugin(plugin_name: str):

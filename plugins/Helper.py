@@ -14,12 +14,14 @@ from murainbot.core import PluginManager, ConfigManager
 
 logger = Logger.get_logger()
 
+command_start = ConfigManager.GlobalConfig().command.command_start[0]
+
 plugin_info = PluginManager.PluginInfo(
     NAME="Helper",
     AUTHOR="Xiaosu",
     VERSION="1.0.0",
     DESCRIPTION="用于获取插件帮助信息",
-    HELP_MSG="发送 /help 或 /帮助 以获取所有插件的帮助信息"
+    HELP_MSG=f"发送 {command_start}help 或 {command_start}帮助 以获取所有插件的帮助信息"
 )
 
 
@@ -39,7 +41,7 @@ def get_help_text():
                 text += f"\n{plugin_info.NAME} - {plugin_info.DESCRIPTION}"
         except Exception as e:
             logger.warning(f"获取插件{plugin['name']}信息时发生错误: {repr(e)}")
-    text += "\n----------\n发送/help <插件名>或/帮助 <插件名>以获取插件详细帮助信息"
+    text += f"\n----------\n发送{command_start}help <插件名>或{command_start}帮助 <插件名>以获取插件详细帮助信息"
     return text
 
 
@@ -61,7 +63,8 @@ def on_help(event_data: CommandManager.CommandEvent, plugin_name: str = None):
                 if plugin_info is None:
                     continue
                 if plugin_info.NAME.lower() == plugin_name and plugin_info.IS_HIDDEN is False:
-                    event_data.reply(plugin_info.HELP_MSG + "\n----------\n发送/help以获取全部的插件帮助信息")
+                    event_data.reply(plugin_info.HELP_MSG + f"\n----------\n发送{command_start}help或"
+                                                            f"{command_start}帮助以获取全部的插件帮助信息")
                     return
             except Exception as e:
                 logger.warning(f"获取插件{plugin['name']}信息时发生错误: {repr(e)}")
