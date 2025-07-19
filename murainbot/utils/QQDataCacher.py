@@ -270,7 +270,7 @@ class GroupData(QQDataItem):
                 self._data[item] = member_list
             except Exception as e:
                 logger.warn(f"获取群{self._group_id}成员列表信息失败: {repr(e)}")
-                return
+                return None
 
         if self._data.get(item) == NotFetched or time.time() - self.last_update > expire_time:
             self.refresh_cache()
@@ -411,14 +411,11 @@ def scheduled_garbage_collection():
         time.sleep(60)
         t += 1
         if (
-                t > 4 or (
-                t > 1 and (
+                t > 4 or (t > 1 and (
                 len(group_info) > max_cache_size or
                 len(user_info) > max_cache_size or
                 len(group_member_info) > max_cache_size
-        )
-        )
-        ):
+        ))):
             t = 0
             logger.debug("QQ数据缓存清理开始...")
             try:

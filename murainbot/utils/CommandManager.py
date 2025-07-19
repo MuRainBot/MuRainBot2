@@ -82,7 +82,7 @@ class ArgMeta(type):
     def __init__(cls, name, bases, dct):
         super().__init__(name, bases, dct)
         if 'BaseArg' in globals() and issubclass(cls, BaseArg):
-            arg_map[f"{cls.__module__}.{cls.__name__}"] = cls
+            arg_map[f"{cls.__name__}" if cls.__module__ == __name__ else f"{cls.__module__}.{cls.__name__}"] = cls
 
 
 class BaseArg(metaclass=ArgMeta):
@@ -97,7 +97,10 @@ class BaseArg(metaclass=ArgMeta):
         self.next_arg_list = next_arg_list
 
     def __str__(self):
-        return f"<{self.arg_name}: {self.__class__.__module__}.{self.__class__.__name__}{self.config_str(", ")}>"
+        if self.__module__ == __name__:
+            return f"<{self.arg_name}: {self.__class__.__name__}{self.config_str(", ")}>"
+        else:
+            return f"<{self.arg_name}: {self.__class__.__module__}.{self.__class__.__name__}{self.config_str(", ")}>"
 
     def __repr__(self):
         return "\n".join(self._generate_repr_lines())
@@ -106,13 +109,16 @@ class BaseArg(metaclass=ArgMeta):
         """
         生成该节点的字符串形式
         """
-        return f"{self.__class__.__name__}({self.arg_name!r}{self.config_str(", ")})"
+        return f"{self.__class__.__name__}({self.arg_name!r}{self.config_str(", ", encode=False)})"
 
-    def config_str(self, prefix=""):
+    def config_str(self, prefix: str = "", encode: bool = True):
         """
         生成当前节点配置文件的字符串形式
         """
-        res = ", ".join(f"{k}={encode_arg(repr(v))}" for k, v in self.get_config().items())
+        if encode:
+            res = ", ".join(f"{k}={encode_arg(repr(v))}" for k, v in self.get_config().items())
+        else:
+            res = ", ".join(f"{k}={repr(v)}" for k, v in self.get_config().items())
         if res:
             res = prefix + res
         return res
@@ -244,7 +250,10 @@ class Literal(BaseArg):
         """
         获取当前实例的配置
         """
-        return {"aliases": self.aliases}
+        config = {}
+        if self.aliases:
+            config["aliases"] = self.aliases
+        return config
 
     def matcher(self, remaining_cmd: QQRichText.QQRichText) -> bool:
         if remaining_cmd.strip().rich_array[0].type == "text":
@@ -292,8 +301,12 @@ class OptionalArg(BaseArg):
         return f"Optional({self.wrapped_arg.node_str()}, default={self.default!r})"
 
     def __str__(self):
-        return (f"[{self.wrapped_arg.arg_name}: {self.wrapped_arg.__class__.__module__}."
-                f"{self.wrapped_arg.__class__.__name__}={self.default!r}{self.wrapped_arg.config_str(", ")}]")
+        if self.wrapped_arg.__class__.__module__ == __name__:
+            return (f"[{self.wrapped_arg.arg_name}: "
+                    f"{self.wrapped_arg.__class__.__name__}={self.default!r}{self.wrapped_arg.config_str(", ")}]")
+        else:
+            return (f"[{self.wrapped_arg.arg_name}: {self.wrapped_arg.__class__.__module__}."
+                    f"{self.wrapped_arg.__class__.__name__}={self.default!r}{self.wrapped_arg.config_str(", ")}]")
 
     def handler(self, remaining_cmd: QQRichText.QQRichText) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
         return self.wrapped_arg.handler(remaining_cmd)
@@ -359,6 +372,15 @@ class TextArg(BaseArg):
 class GreedySegments(BaseArg):
     def handler(self, remaining_cmd):
         return {self.arg_name: remaining_cmd}, None
+
+
+class GreedyTextArg(BaseArg):
+    def handler(self, remaining_cmd):
+        if remaining_cmd.type == "text":
+            return ({self.arg_name: remaining_cmd.data.get("text")},
+                    QQRichText.QQRichText(*remaining_cmd.rich_array[1:]))
+        else:
+            raise ValueError(f"参数 {self.arg_name} 的类型必须是文本")
 
 
 class AnySegmentArg(BaseArg):
@@ -682,22 +704,24 @@ class CommandManager:
             user_input = command.rich_array[0]
             if user_input.type == "text":
                 user_input = user_input.data.get("text")
-            else:
-                user_input = None
-            if literals and user_input:
-                closest_command = None
-                min_dist = float('inf')
-
-                for command in literals:
-                    dist = levenshtein_distance(user_input, command)
-
-                    if dist < min_dist and dist <= 3:
-                        min_dist = dist
-                        closest_command = command
-                if closest_command:
+                if len(literals) == 1:
                     raise NotMatchCommandError(f'命令不匹配任何命令定义: '
-                                               f'{", ".join([str(_) for _ in self.command_list])}\n'
-                                               f'你的意思是: {closest_command}？')
+                                               f'{", ".join([str(_) for _ in self.command_list])}'
+                                               f'你的意思是: {literals[0]}？')
+                elif literals:
+                    closest_command = None
+                    min_dist = float('inf')
+
+                    for command in literals:
+                        dist = levenshtein_distance(user_input, command)
+
+                        if dist < min_dist and dist <= 3:
+                            min_dist = dist
+                            closest_command = command
+                    if closest_command:
+                        raise NotMatchCommandError(f'命令不匹配任何命令定义: '
+                                                   f'{", ".join([str(_) for _ in self.command_list])}\n'
+                                                   f'你的意思是: {closest_command}？')
             raise NotMatchCommandError(f'命令不匹配任何命令定义: '
                                        f'{", ".join([str(_) for _ in self.command_list])}')
         try:
@@ -927,7 +951,7 @@ def on_command(command: str,
 
 if __name__ == '__main__':
     test_command_manager = CommandManager()
-    languages = [Literal("python", {"py"}),]
+    languages = [Literal("python", {"py"})]
     cmd = (f"codeshare "
            f"{SkipOptionalArg(EnumArg("language", languages), "guess")}")
     print(cmd)
