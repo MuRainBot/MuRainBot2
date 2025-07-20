@@ -87,7 +87,7 @@ def start(work_path=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from . import common
     atexit.register(common.finalize_and_cleanup)
 
-    from .utils import AutoRestartOnebot
+    from .utils import AutoRestartOnebot, TimerManager
 
     Logger.set_logger_level(logging.DEBUG if ConfigManager.GlobalConfig().debug.enable else logging.INFO)
     live.stop()
@@ -130,7 +130,8 @@ def start(work_path=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
                     ]
                 )}")
 
-    threading.Thread(target=AutoRestartOnebot.check_heartbeat, daemon=True).start()
+    threading.Thread(target=TimerManager.run_timer, daemon=True).start()
+    TimerManager.delay(0, AutoRestartOnebot.check_heartbeat)
 
     logger.info(f"启动监听服务器: {ConfigManager.GlobalConfig().server.server}")
 

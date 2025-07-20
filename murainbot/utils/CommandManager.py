@@ -3,11 +3,15 @@
 """
 
 import ast
-from typing import Any, Union
+import ctypes
+import dataclasses
+import inspect
+import time
+from typing import Any, Union, Generator
 
 from murainbot.common import inject_dependencies, save_exc_dump
 from murainbot.core import EventManager, PluginManager, ConfigManager
-from murainbot.utils import QQRichText, EventHandlers, EventClassifier, Actions, Logger, StateManager
+from murainbot.utils import QQRichText, EventHandlers, EventClassifier, Actions, Logger, StateManager, TimerManager
 
 arg_map = {}
 logger = Logger.get_logger()
@@ -753,10 +757,69 @@ class CommandManager:
             else:
                 raise CommandMatchError(f'剩余命令: "{command}" 不匹配任何命令定义: '
                                         f'{", ".join([str(_) for _ in now_command_def.next_arg_list])}', command_def)
-            new_kwargs, command = now_command_def.handler(command)
+            new_kwargs, command = now_command_def.generator(command)
             kwargs.update(new_kwargs)
 
         return kwargs, command_def, now_command_def
+
+
+class WaitTimeoutError(Exception):
+    """
+    等待超时异常
+    """
+
+
+@dataclasses.dataclass
+class WaitHandler:
+    """
+    等待中的处理器的数据
+    """
+    generator: Generator
+    raw_event_data: CommandEvent
+    wait_command_def: BaseArg | str
+    wait_user_id: int | None = None
+    wait_timeout: int | None = 60
+    wait_command: CommandManager = dataclasses.field(init=False)
+    start_time: int = dataclasses.field(init=False, default_factory=time.time)
+
+    def __post_init__(self):
+        if isinstance(self.wait_command_def, str):
+            # 自动将字符串解析为对象
+            self.wait_command_def = parsing_command_def(self.wait_command_def)
+        self.wait_command = CommandManager().register_command(self.wait_command_def)
+
+
+@dataclasses.dataclass
+class WaitMessage:
+    """
+    等待消息
+    """
+    wait_command_def: BaseArg | str
+    wait_user_id: int | None = None
+    timeout: int | None = 60  # 超时后会抛出 WaitTimeoutError
+
+
+def throw_timeout_error(matcher: "CommandMatcher", handler: WaitHandler):
+    """
+    抛出超时错误
+    Args:
+        matcher: 等待的处理器所属的匹配器
+        handler: 等待的处理器
+
+    Returns:
+        None
+    """
+    for waiting_handler in matcher.waiting_handlers:
+        if waiting_handler is handler:
+            try:
+                waiting_handler.generator.throw(WaitTimeoutError("等待超时"))
+            except StopIteration:
+                pass
+            try:
+                matcher.waiting_handlers.remove(waiting_handler)
+            except ValueError:
+                pass
+            return
 
 
 class CommandMatcher(EventHandlers.Matcher):
@@ -767,6 +830,7 @@ class CommandMatcher(EventHandlers.Matcher):
     def __init__(self, plugin_data, rules: list[EventHandlers.Rule] = None):
         super().__init__(plugin_data, rules)
         self.command_manager = CommandManager()
+        self.waiting_handlers: list[WaitHandler] = []
 
     def register_command(self, command: BaseArg | str,
                          priority: int = 0, rules: list[EventHandlers.Rule] = None, *args, **kwargs):
@@ -800,6 +864,62 @@ class CommandMatcher(EventHandlers.Matcher):
         Returns:
             是否匹配, 规则返回的依赖注入参数
         """
+        # 检查是否有正在等待的处理器
+        for handler in self.waiting_handlers:
+            if handler.raw_event_data.is_group and event_data.get("group_id") != handler.raw_event_data["group_id"]:
+                continue
+            if handler.wait_user_id is None or handler.wait_user_id == event_data.user_id:
+                try:
+                    kwargs, command_def, last_command_def = handler.wait_command.run_command(event_data.message)
+                except Exception as e:
+                    continue
+
+                # 神奇妙妙修改局部变量小魔法
+                frame = handler.generator.gi_frame
+                f_locals = frame.f_locals
+
+                if 'event_data' in f_locals:
+                    f_locals['event_data'] = event_data
+
+                    ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
+
+                try:
+                    wait_action = handler.generator.send(kwargs)
+                except StopIteration:
+                    continue
+                except Exception as e:
+                    logger.error(f"等待处理器发生错误: {repr(e)}", exc_info=True)
+                    continue
+                finally:
+                    self.waiting_handlers.remove(handler)
+
+                if isinstance(wait_action, str) or isinstance(wait_action, BaseArg):
+                    wait_action = WaitMessage(
+                        wait_command_def=wait_action,
+                        wait_user_id=event_data.user_id
+                    )
+                elif isinstance(wait_action, WaitMessage):
+                    pass
+                else:
+                    handler.generator.throw(TypeError("wait_action must be a str or BaseArg or WaitMessage"))
+
+                if wait_action:
+                    wait_handler = WaitHandler(
+                        generator=handler.generator,
+                        raw_event_data=event_data,
+                        wait_command_def=wait_action.wait_command_def,
+                        wait_user_id=wait_action.wait_user_id,
+                        wait_timeout=wait_action.timeout
+                    )
+                    self.waiting_handlers.append(wait_handler)
+                    if wait_handler.wait_timeout is not None:
+                        TimerManager.delay(
+                            wait_handler.wait_timeout,
+                            throw_timeout_error,
+                            matcher=self,
+                            handler=wait_handler
+                        )
+                return False, None
         rules_kwargs = {}
         try:
             for rule in self.rules:
@@ -884,7 +1004,47 @@ class CommandMatcher(EventHandlers.Matcher):
                 handler_kwargs.update(rules_kwargs)
                 handler_kwargs = inject_dependencies(handler, handler_kwargs)
 
-                result = handler(event_data, *args, **handler_kwargs)
+                # 检查是否是生成器
+                if inspect.isgeneratorfunction(handler):
+                    generator = handler(event_data, *args, **handler_kwargs)
+                    try:
+                        wait_action = generator.send(None)
+                    except StopIteration as e:
+                        if e.value is True:
+                            return
+                        else:
+                            wait_action = None
+
+                    if wait_action is not None:
+                        if isinstance(wait_action, str) or isinstance(wait_action, BaseArg):
+                            wait_action = WaitMessage(
+                                wait_command_def=wait_action,
+                                wait_user_id=event_data.user_id
+                            )
+                        elif isinstance(wait_action, WaitMessage):
+                            pass
+                        else:
+                            handler.throw(TypeError("wait_action must be a str or BaseArg or WaitMessage"))
+
+                        if wait_action:
+                            wait_handler = WaitHandler(
+                                generator=generator,
+                                raw_event_data=event_data,
+                                wait_command_def=wait_action.wait_command_def,
+                                wait_user_id=wait_action.wait_user_id,
+                                wait_timeout=wait_action.timeout
+                            )
+                            self.waiting_handlers.append(wait_handler)
+                            if wait_handler.wait_timeout is not None:
+                                TimerManager.delay(
+                                    wait_handler.wait_timeout,
+                                    throw_timeout_error,
+                                    matcher=self,
+                                    handler=wait_handler
+                                )
+                    result = False
+                else:
+                    result = handler(event_data, *args, **handler_kwargs)
 
                 if result is True:
                     logger.debug(f"处理器 {handler.__name__} 阻断了事件 {event_data} 的传播")
