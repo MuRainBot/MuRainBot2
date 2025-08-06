@@ -7,6 +7,9 @@ import time
 import heapq
 from typing import Callable
 
+from murainbot.common import save_exc_dump
+from murainbot.core import ConfigManager
+
 from murainbot.utils.Logger import get_logger
 
 logger = get_logger()
@@ -71,7 +74,24 @@ def run_timer():
             time.sleep(min(sleep_duration, 1))
             continue
 
+        t = time.perf_counter()
         try:
             task_to_run.target(*task_to_run.args, **task_to_run.kwargs)
         except Exception as e:
-            logger.error(f"执行计时器任务时出错: {repr(e)}", exc_info=True)
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(
+                    f"执行计时器 {task_to_run.target.__module__}.{task_to_run.target.__name__} 任务时出错")
+            else:
+                dump_path = None
+            logger.error(
+                f"执行计时器 {task_to_run.target.__module__}.{task_to_run.target.__name__} 任务时出错: {repr(e)}"
+                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                exc_info=True
+            )
+        if time.perf_counter() - t > 3:
+            logger.warning(
+                f"执行计时器 {task_to_run.target.__module__}.{task_to_run.target.__name__} "
+                f"耗时过长: {round((time.perf_counter() - t) * 1000, 2)}ms。"
+                f"这可能会导致其他任务阻塞，如果的确需要长时间的任务，请为此任务的函数添加@async_task装饰器，"
+                f"以让其在线程池的另一个线程中运行。"
+            )
