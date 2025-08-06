@@ -41,12 +41,14 @@ def get_gradient(start_color: tuple[int, int, int], end_color: tuple[int, int, i
     )
 
 
-def start(work_path=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))):
+def start(work_path=None):
     """
     启动MRB2
     Args:
-        work_path: MRB2实例的工作目录，默认为安装目录，谨慎填写
+        work_path: MRB2实例的工作目录，默认为os.getcwd()，谨慎填写
     """
+    if work_path is None:
+        work_path = os.getcwd()
     paths.init_paths(work_path)
     paths.paths.ensure_all_dirs_exist()
 

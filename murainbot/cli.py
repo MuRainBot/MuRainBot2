@@ -25,10 +25,11 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 .env
 
 # MuRainBot
-/data/
+/data/cache/
 /logs/
 /exc_dumps/
 *.db

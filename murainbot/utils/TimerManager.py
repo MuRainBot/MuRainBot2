@@ -27,7 +27,7 @@ class TimerTask:
     kwargs: dict = dataclasses.field(default_factory=dict, compare=False)
 
     def __post_init__(self):
-        self.execute_time = time.time() + self.delay
+        self.execute_time = time.perf_counter() + self.delay
 
 
 timer_queue: list[TimerTask] = []
@@ -53,7 +53,7 @@ def run_timer():
     运行计时器
     """
     while True:
-        now = time.time()
+        now = time.perf_counter()
 
         with queue_lock:
             if not timer_queue:
@@ -67,7 +67,8 @@ def run_timer():
                     sleep_duration = next_task.execute_time - now
 
         if sleep_duration > 0:
-            time.sleep(sleep_duration)
+            # 防止睡眠时间太长导致中间插入的新的任务被拖太久
+            time.sleep(min(sleep_duration, 1))
             continue
 
         try:

@@ -5,7 +5,7 @@ import time
 import threading
 
 from ..core import OnebotAPI, ConfigManager
-from . import Logger
+from . import Logger, TimerManager
 
 NotFetched = type("NotFetched", (), {"__getattr__": lambda _, __: NotFetched,
                                      "__repr__": lambda _: "NotFetched",
@@ -407,8 +407,9 @@ def scheduled_garbage_collection():
         None
     """
     t = 0
-    while True:
-        time.sleep(60)
+
+    def worker():
+        nonlocal t
         t += 1
         if (
                 t > 4 or (t > 1 and (
@@ -423,7 +424,10 @@ def scheduled_garbage_collection():
                 logger.debug(f"QQ数据缓存清理完成，共清理了 {counter} 项信息。")
             except Exception as e:
                 logger.warn(f"QQ数据缓存清理时出现异常: {repr(e)}")
+        TimerManager.delay(60, worker)
+
+    worker()
 
 
-# 启动垃圾回收线程
-threading.Thread(target=scheduled_garbage_collection, daemon=True).start()
+# 启动垃圾回收
+scheduled_garbage_collection()
