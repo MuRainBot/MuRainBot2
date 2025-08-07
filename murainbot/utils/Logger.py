@@ -137,7 +137,7 @@ class CustomRichHandler(logging.Handler):
             meta_table.add_column(style="log.path")
             meta_table.add_row(time_text, level_text, Text(r"↩"), path_text)
 
-            final_layout = Group(meta_table, message_text)
+            final_layout = Group(meta_table, message_text + "\n")
 
         # --- 组合最终布局和 Traceback ---
         if traceback:

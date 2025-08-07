@@ -3,11 +3,15 @@
 """
 
 import ast
-from typing import Any, Union
+import dataclasses
+import inspect
+import time
+from typing import Any, Union, Generator, Callable
 
 from murainbot.common import inject_dependencies, save_exc_dump
 from murainbot.core import EventManager, PluginManager, ConfigManager
-from murainbot.utils import QQRichText, EventHandlers, EventClassifier, Actions, Logger, StateManager
+from murainbot.core.ThreadPool import async_task
+from murainbot.utils import QQRichText, EventHandlers, EventClassifier, Actions, Logger, StateManager, TimerManager
 
 arg_map = {}
 logger = Logger.get_logger()
@@ -82,7 +86,7 @@ class ArgMeta(type):
     def __init__(cls, name, bases, dct):
         super().__init__(name, bases, dct)
         if 'BaseArg' in globals() and issubclass(cls, BaseArg):
-            arg_map[f"{cls.__module__}.{cls.__name__}"] = cls
+            arg_map[f"{cls.__name__}" if cls.__module__ == __name__ else f"{cls.__module__}.{cls.__name__}"] = cls
 
 
 class BaseArg(metaclass=ArgMeta):
@@ -97,7 +101,10 @@ class BaseArg(metaclass=ArgMeta):
         self.next_arg_list = next_arg_list
 
     def __str__(self):
-        return f"<{self.arg_name}: {self.__class__.__module__}.{self.__class__.__name__}{self.config_str(", ")}>"
+        if self.__module__ == __name__:
+            return f"<{self.arg_name}: {self.__class__.__name__}{self.config_str(", ")}>"
+        else:
+            return f"<{self.arg_name}: {self.__class__.__module__}.{self.__class__.__name__}{self.config_str(", ")}>"
 
     def __repr__(self):
         return "\n".join(self._generate_repr_lines())
@@ -106,13 +113,16 @@ class BaseArg(metaclass=ArgMeta):
         """
         生成该节点的字符串形式
         """
-        return f"{self.__class__.__name__}({self.arg_name!r}{self.config_str(", ")})"
+        return f"{self.__class__.__name__}({self.arg_name!r}{self.config_str(", ", encode=False)})"
 
-    def config_str(self, prefix=""):
+    def config_str(self, prefix: str = "", encode: bool = True):
         """
         生成当前节点配置文件的字符串形式
         """
-        res = ", ".join(f"{k}={encode_arg(repr(v))}" for k, v in self.get_config().items())
+        if encode:
+            res = ", ".join(f"{k}={encode_arg(repr(v))}" for k, v in self.get_config().items())
+        else:
+            res = ", ".join(f"{k}={repr(v)}" for k, v in self.get_config().items())
         if res:
             res = prefix + res
         return res
@@ -244,7 +254,10 @@ class Literal(BaseArg):
         """
         获取当前实例的配置
         """
-        return {"aliases": self.aliases}
+        config = {}
+        if self.aliases:
+            config["aliases"] = self.aliases
+        return config
 
     def matcher(self, remaining_cmd: QQRichText.QQRichText) -> bool:
         if remaining_cmd.strip().rich_array[0].type == "text":
@@ -292,8 +305,12 @@ class OptionalArg(BaseArg):
         return f"Optional({self.wrapped_arg.node_str()}, default={self.default!r})"
 
     def __str__(self):
-        return (f"[{self.wrapped_arg.arg_name}: {self.wrapped_arg.__class__.__module__}."
-                f"{self.wrapped_arg.__class__.__name__}={self.default!r}{self.wrapped_arg.config_str(", ")}]")
+        if self.wrapped_arg.__class__.__module__ == __name__:
+            return (f"[{self.wrapped_arg.arg_name}: "
+                    f"{self.wrapped_arg.__class__.__name__}={self.default!r}{self.wrapped_arg.config_str(", ")}]")
+        else:
+            return (f"[{self.wrapped_arg.arg_name}: {self.wrapped_arg.__class__.__module__}."
+                    f"{self.wrapped_arg.__class__.__name__}={self.default!r}{self.wrapped_arg.config_str(", ")}]")
 
     def handler(self, remaining_cmd: QQRichText.QQRichText) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
         return self.wrapped_arg.handler(remaining_cmd)
@@ -359,6 +376,15 @@ class TextArg(BaseArg):
 class GreedySegments(BaseArg):
     def handler(self, remaining_cmd):
         return {self.arg_name: remaining_cmd}, None
+
+
+class GreedyTextArg(BaseArg):
+    def handler(self, remaining_cmd):
+        if remaining_cmd.type == "text":
+            return ({self.arg_name: remaining_cmd.data.get("text")},
+                    QQRichText.QQRichText(*remaining_cmd.rich_array[1:]))
+        else:
+            raise ValueError(f"参数 {self.arg_name} 的类型必须是文本")
 
 
 class AnySegmentArg(BaseArg):
@@ -682,22 +708,24 @@ class CommandManager:
             user_input = command.rich_array[0]
             if user_input.type == "text":
                 user_input = user_input.data.get("text")
-            else:
-                user_input = None
-            if literals and user_input:
-                closest_command = None
-                min_dist = float('inf')
-
-                for command in literals:
-                    dist = levenshtein_distance(user_input, command)
-
-                    if dist < min_dist and dist <= 3:
-                        min_dist = dist
-                        closest_command = command
-                if closest_command:
+                if len(literals) == 1:
                     raise NotMatchCommandError(f'命令不匹配任何命令定义: '
-                                               f'{", ".join([str(_) for _ in self.command_list])}\n'
-                                               f'你的意思是: {closest_command}？')
+                                               f'{", ".join([str(_) for _ in self.command_list])}'
+                                               f'你的意思是: {literals[0]}？')
+                elif literals:
+                    closest_command = None
+                    min_dist = float('inf')
+
+                    for command in literals:
+                        dist = levenshtein_distance(user_input, command)
+
+                        if dist < min_dist and dist <= 3:
+                            min_dist = dist
+                            closest_command = command
+                    if closest_command:
+                        raise NotMatchCommandError(f'命令不匹配任何命令定义: '
+                                                   f'{", ".join([str(_) for _ in self.command_list])}\n'
+                                                   f'你的意思是: {closest_command}？')
             raise NotMatchCommandError(f'命令不匹配任何命令定义: '
                                        f'{", ".join([str(_) for _ in self.command_list])}')
         try:
@@ -729,10 +757,125 @@ class CommandManager:
             else:
                 raise CommandMatchError(f'剩余命令: "{command}" 不匹配任何命令定义: '
                                         f'{", ".join([str(_) for _ in now_command_def.next_arg_list])}', command_def)
-            new_kwargs, command = now_command_def.handler(command)
+            new_kwargs, command = now_command_def.generator(command)
             kwargs.update(new_kwargs)
 
         return kwargs, command_def, now_command_def
+
+
+class WaitTimeoutError(Exception):
+    """
+    等待超时异常
+    """
+
+
+@dataclasses.dataclass
+class WaitHandler:
+    """
+    等待中的处理器的数据
+    """
+    generator: Generator["WaitAction", tuple[EventManager.Event | None, Any], Any]
+    raw_event_data: CommandEvent
+    raw_handler: Callable[[...], ...]
+    wait_timeout: int | None = 60
+
+
+@dataclasses.dataclass
+class WaitAction:
+    """
+    等待操作
+    """
+    wait_trigger: Callable[["CommandMatcher.TriggerEvent"], ...]
+    timeout: int | None = 60
+    matcher: "CommandMatcher" = dataclasses.field(init=False)
+    wait_handler: WaitHandler = dataclasses.field(init=False)
+
+    def set_data(self, matcher: "CommandMatcher", wait_handler: WaitHandler):
+        """
+        设置数据，由框架调用，**无需插件开发者手动调用**
+        Args:
+            matcher: 匹配器
+            wait_handler: 等待处理器
+        """
+        self.matcher = matcher
+        self.wait_handler = wait_handler
+
+
+@dataclasses.dataclass
+class WaitCommand(WaitAction):
+    """
+    等待命令
+    """
+    wait_command_def: BaseArg | str | None = None
+    user_id: int | None = -1  # -1则为当前这个事件的用户，None则为任意用户，如果是群聊则仅限该群
+    wait_trigger: Callable[["CommandMatcher.TriggerEvent"], ...] = dataclasses.field(init=False)
+
+    def __post_init__(self):
+        if isinstance(self.wait_command_def, str):
+            # 自动将字符串解析为对象
+            self.wait_command_def = parsing_command_def(self.wait_command_def)
+        if self.wait_command_def is not None:
+            wait_command = CommandManager().register_command(self.wait_command_def)
+        else:
+            wait_command = None
+        self.wait_trigger = _wait_command_trigger(wait_command, self)
+
+
+def _wait_command_trigger(wait_command: CommandManager | None, wait_action: WaitCommand):
+    """
+    创建等待命令触发器
+    Args:
+        wait_command: 命令管理器
+        wait_action: 等待操作
+
+    Returns:
+        触发器
+    """
+
+    def trigger(trigger_event: CommandMatcher.TriggerEvent):
+        def on_evnet(event_data: CommandEvent):
+            if not wait_action.wait_handler:
+                raise RuntimeError("等待处理器未设置")
+            handler = wait_action.wait_handler
+            wait_user_id = handler.raw_event_data.user_id if wait_action.user_id == -1 else wait_action.user_id
+            if handler.raw_event_data.is_group and event_data.get("group_id") != handler.raw_event_data["group_id"]:
+                return
+            if wait_user_id is None or wait_user_id == event_data.user_id:
+                if isinstance(wait_command, CommandManager):
+                    try:
+                        kwargs, _, _ = wait_command.run_command(event_data.message)
+                    except Exception:
+                        return
+                    trigger_event.set_data((event_data, kwargs))
+                EventManager.unregister_listener(CommandEvent, on_evnet)
+                trigger_event.call()
+
+        EventManager.event_listener(CommandEvent)(on_evnet)
+
+    return trigger
+
+
+def throw_timeout_error(matcher: "CommandMatcher", handler: WaitHandler):
+    """
+    抛出超时错误
+    Args:
+        matcher: 等待的处理器所属的匹配器
+        handler: 等待的处理器
+
+    Returns:
+        None
+    """
+    for waiting_handler in matcher.waiting_handlers:
+        if waiting_handler is handler:
+            try:
+                waiting_handler.generator.throw(WaitTimeoutError("等待超时"))
+            except StopIteration:
+                pass
+            try:
+                matcher.waiting_handlers.remove(waiting_handler)
+            except ValueError:
+                pass
+            return
 
 
 class CommandMatcher(EventHandlers.Matcher):
@@ -740,9 +883,101 @@ class CommandMatcher(EventHandlers.Matcher):
     命令匹配器
     """
 
+    class TriggerEvent(EventManager.Event):
+        def __init__(self, wait_handler: WaitHandler):
+            self.wait_handler = wait_handler
+            self.data = None
+
+        def set_data(self, data):
+            """
+            设置返回数据
+            Args:
+                data: 返回数据
+            """
+            self.data = data
+
     def __init__(self, plugin_data, rules: list[EventHandlers.Rule] = None):
         super().__init__(plugin_data, rules)
         self.command_manager = CommandManager()
+        self.waiting_handlers: list[WaitHandler] = []
+
+    def _on_trigger_event(self, wait_handler: WaitHandler):
+        @async_task
+        def _on_event(event: CommandMatcher.TriggerEvent):
+            nonlocal wait_handler
+            if event.wait_handler is not wait_handler:
+                return None
+            # if event.new_event_data:
+            # 神奇妙妙修改局部变量小魔法(弃用，这东西还是有点过于魔法了，还是正常点好了)
+            # try:
+            #     frame = wait_handler.generator.gi_frame
+            #     if frame is None:
+            #         logger.warning(f"在尝试修改事件处理器时事件数据时发生错误: 帧已不存在", stack_info=True)
+            #     else:
+            #         f_locals = frame.f_locals
+            #
+            #         if 'event_data' in f_locals:
+            #             f_locals['event_data'] = event.new_event_data
+            #
+            #             ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
+            # except Exception as e:
+            #     logger.error(f"在尝试修改事件处理器时事件数据时发生错误: {repr(e)}", exc_info=True)
+
+            # print(wait_handler, event.wait_handler, self.waiting_handlers)
+            try:
+                wait_action = wait_handler.generator.send(event.data)
+            except StopIteration:
+                return True
+            except Exception as e:
+                if ConfigManager.GlobalConfig().debug.save_dump:
+                    dump_path = save_exc_dump(f"执行等待处理器 {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} 发生错误")
+                else:
+                    dump_path = None
+                logger.error(
+                    f"执行等待处理器 {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} 发生错误: {repr(e)}"
+                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                    exc_info=True
+                )
+                return True
+            finally:
+                self.waiting_handlers.remove(wait_handler)
+                EventManager.unregister_listener(self.TriggerEvent, _on_event)
+
+            if not isinstance(wait_action, WaitAction):
+                wait_handler.generator.throw(TypeError("wait_action must be a WaitAction"))
+                return True
+
+            wait_handler = WaitHandler(
+                generator=wait_handler.generator,
+                raw_event_data=wait_handler.raw_event_data,
+                raw_handler=wait_handler.raw_handler,
+                wait_timeout=wait_action.timeout
+            )
+            wait_action.set_data(self, wait_handler)
+            self.waiting_handlers.append(wait_handler)
+            if wait_handler.wait_timeout is not None:
+                TimerManager.delay(
+                    wait_handler.wait_timeout,
+                    throw_timeout_error,
+                    matcher=self,
+                    handler=wait_handler
+                )
+            targeter_event = self.TriggerEvent(wait_handler)
+            EventManager.event_listener(self.TriggerEvent)(self._on_trigger_event(wait_handler))
+            t = time.perf_counter()
+            wait_action.wait_trigger(targeter_event)
+            if time.perf_counter() - t > 0.5:
+                logger.warning(f"在执行处理器"
+                               f" {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} "
+                               f"时，其返回的等待处理器触发器"
+                               f"{wait_action.wait_trigger.__module__}.{wait_action.wait_trigger.__name__}"
+                               f"初始化时间过长，"
+                               f"耗时: {round((time.perf_counter() - t) * 1000, 2)}ms，"
+                               f"等待处理器运行请仅进行初始化，不要在其中执行耗时操作，如果的确有需求请使用"
+                               f"@async_task装饰器，让其运行在线程池的其他线程中")
+            return True
+
+        return _on_event
 
     def register_command(self, command: BaseArg | str,
                          priority: int = 0, rules: list[EventHandlers.Rule] = None, *args, **kwargs):
@@ -761,7 +996,9 @@ class CommandMatcher(EventHandlers.Matcher):
         if any(not isinstance(rule, EventHandlers.Rule) for rule in rules):
             raise TypeError("rules must be a list of Rule")
 
-        def wrapper(func):
+        def wrapper(
+                func: Callable[[CommandEvent, ...], bool | Any] | Generator[CommandEvent, WaitAction | WaitCommand, Any]
+        ):
             self.handlers.append((priority, rules, func, args, kwargs, command))
             return func
 
@@ -786,7 +1023,15 @@ class CommandMatcher(EventHandlers.Matcher):
                 if not res:
                     return False, None
         except Exception as e:
-            logger.error(f"匹配事件处理器时出错: {repr(e)}", exc_info=True)
+            if ConfigManager.GlobalConfig().debug.save_dump:
+                dump_path = save_exc_dump(f"在事件 {event_data.event_data} 中匹配事件处理器时出错")
+            else:
+                dump_path = None
+            logger.error(
+                f"在事件 {event_data.event_data} 中匹配事件处理器时出错: {repr(e)}"
+                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                exc_info=True
+            )
             return False, None
         return True, rules_kwargs
 
@@ -797,25 +1042,37 @@ class CommandMatcher(EventHandlers.Matcher):
             event_data: 事件数据
             rules_kwargs: 规则返回的注入参数
         """
-        try:
-            kwargs, command_def, last_command_def = self.command_manager.run_command(rules_kwargs["command_message"])
-        except NotMatchCommandError as e:
-            logger.error(f"未匹配到命令: {repr(e)}", exc_info=True)
-            event_data.reply(f"未匹配到命令: {e}")
-            return
-        except CommandMatchError as e:
-            logger.info(f"命令匹配错误: {repr(e)}", exc_info=True)
-            event_data.reply(f"命令匹配错误，请检查命令是否正确: {e}")
-            return
-        except Exception as e:
-            logger.error(f"命令处理发生未知错误: {repr(e)}", exc_info=True)
-            event_data.reply(f"命令处理发生未知错误: {repr(e)}")
-            return
-        rules_kwargs.update({
-            "command_def": command_def,
-            "last_command_def": last_command_def,
-            **kwargs
-        })
+        if self.command_manager.command_list:
+            try:
+                kwargs, command_def, last_command_def = self.command_manager.run_command(
+                    rules_kwargs["command_message"])
+            except NotMatchCommandError as e:
+                logger.error(f"未匹配到命令: {repr(e)}", exc_info=True)
+                event_data.reply(f"未匹配到命令: {e}")
+                return None
+            except CommandMatchError as e:
+                logger.info(f"命令匹配错误: {repr(e)}", exc_info=True)
+                event_data.reply(f"命令匹配错误，请检查命令是否正确: {e}")
+                return None
+            except Exception as e:
+                if ConfigManager.GlobalConfig().debug.save_dump:
+                    dump_path = save_exc_dump(f"在事件 {event_data.event_data} 中进行命令处理发生未知错误")
+                else:
+                    dump_path = None
+                logger.error(
+                    f"在事件 {event_data.event_data} 中进行命令处理发生未知错误: {repr(e)}"
+                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+                    exc_info=True
+                )
+                event_data.reply(f"命令处理发生未知错误: {repr(e)}")
+                return None
+            rules_kwargs.update({
+                "command_def": command_def,
+                "last_command_def": last_command_def,
+                **kwargs
+            })
+        else:
+            command_def = None
 
         for handler in sorted(self.handlers, key=lambda x: x[0], reverse=True):
             if len(handler) == 5:
@@ -860,21 +1117,69 @@ class CommandMatcher(EventHandlers.Matcher):
                 handler_kwargs.update(rules_kwargs)
                 handler_kwargs = inject_dependencies(handler, handler_kwargs)
 
-                result = handler(event_data, *args, **handler_kwargs)
+                # 检查是否是生成器
+                if inspect.isgeneratorfunction(handler):
+                    generator = handler(event_data, *args, **handler_kwargs)
+                    try:
+                        wait_action = generator.send(None)
+                    except StopIteration as e:
+                        if e.value is True:
+                            return None
+                        else:
+                            wait_action = None
+
+                    if wait_action is not None:
+                        if not isinstance(wait_action, WaitAction):
+                            generator.throw(TypeError("wait_action must be a WaitAction"))
+                            return True
+
+                        wait_handler = WaitHandler(
+                            generator=generator,
+                            raw_event_data=event_data,
+                            raw_handler=handler,
+                            wait_timeout=wait_action.timeout
+                        )
+                        wait_action.set_data(self, wait_handler)
+                        self.waiting_handlers.append(wait_handler)
+                        if wait_handler.wait_timeout is not None:
+                            TimerManager.delay(
+                                wait_handler.wait_timeout,
+                                throw_timeout_error,
+                                matcher=self,
+                                handler=wait_handler
+                            )
+                        targeter_event = self.TriggerEvent(wait_handler)
+                        EventManager.event_listener(self.TriggerEvent)(self._on_trigger_event(wait_handler))
+                        t = time.perf_counter()
+                        wait_action.wait_trigger(targeter_event)
+                        if time.perf_counter() - t > 0.5:
+                            logger.warning(f"在执行处理器"
+                                           f" {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} "
+                                           f"时，其返回的等待处理器触发器"
+                                           f"{wait_action.wait_trigger.__module__}.{wait_action.wait_trigger.__name__}"
+                                           f"初始化时间过长，"
+                                           f"耗时: {round((time.perf_counter() - t) * 1000, 2)}ms，"
+                                           f"等待处理器运行请仅进行初始化，不要在其中执行耗时操作，如果的确有需求请使用"
+                                           f"@async_task装饰器，让其运行在线程池的其他线程中")
+                    result = False
+                else:
+                    result = handler(event_data, *args, **handler_kwargs)
 
                 if result is True:
-                    logger.debug(f"处理器 {handler.__name__} 阻断了事件 {event_data} 的传播")
-                    return  # 阻断同一 Matcher 内的传播
+                    logger.debug(f"处理器 {handler.__module__}.{handler.__name__} 阻断了事件 {event_data} 的传播")
+                    return None  # 阻断同一 Matcher 内的传播
             except Exception as e:
                 if ConfigManager.GlobalConfig().debug.save_dump:
-                    dump_path = save_exc_dump(f"执行匹配事件或执行处理器时出错 {event_data}")
+                    dump_path = save_exc_dump(f"执行匹配事件或执行处理器 {handler.__module__}.{handler.__name__} "
+                                              f"时出错 {event_data}")
                 else:
                     dump_path = None
                 logger.error(
-                    f"执行匹配事件或执行处理器时出错 {event_data}: {repr(e)}"
+                    f"执行匹配事件或执行处理器 {handler.__module__}.{handler.__name__} 时出错 {event_data}: {repr(e)}"
                     f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
                     exc_info=True
                 )
+        return None
 
 
 # command_manager = CommandManager()
@@ -927,7 +1232,7 @@ def on_command(command: str,
 
 if __name__ == '__main__':
     test_command_manager = CommandManager()
-    languages = [Literal("python", {"py"}),]
+    languages = [Literal("python", {"py"})]
     cmd = (f"codeshare "
            f"{SkipOptionalArg(EnumArg("language", languages), "guess")}")
     print(cmd)

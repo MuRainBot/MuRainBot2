@@ -6,10 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from murainbot.core.ThreadPool import async_task
-from murainbot.core import ConfigManager
-from murainbot.utils import Logger
 from murainbot.common import save_exc_dump
+from murainbot.core import ConfigManager
+from murainbot.core.ThreadPool import async_task
+from murainbot.utils import Logger
 
 logger = Logger.get_logger()
 
@@ -26,7 +26,7 @@ class Hook(_Event):
     钩子事件，用于在事件处理过程中跳过某些监听器
     """
 
-    def __init__(self, event, listener):
+    def __init__(self, event: "Event", listener: "EventListener"):
         self.event = event
         self.listener = listener
 
@@ -136,7 +136,7 @@ class Event(_Event):
     基事件类，所有自定义事件均继承自此类，继承自此类以创建自定义事件
     """
 
-    def _call_hook(self, listener):
+    def _call_hook(self, listener: EventListener):
         return Hook(self, listener).call()
 
     def call(self):
@@ -167,7 +167,7 @@ class Event(_Event):
         """
         无需等待的异步按优先级顺序触发所有监听器
         """
-        self.call()
+        return self.call()
 
 
 if __name__ == "__main__":
