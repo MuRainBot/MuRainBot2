@@ -757,7 +757,11 @@ class CommandManager:
             else:
                 raise CommandMatchError(f'剩余命令: "{command}" 不匹配任何命令定义: '
                                         f'{", ".join([str(_) for _ in now_command_def.next_arg_list])}', command_def)
-            new_kwargs, command = now_command_def.generator(command)
+
+            try:
+                new_kwargs, command = now_command_def.handler(command)
+            except ValueError as e:
+                raise CommandMatchError(f'命令参数匹配错误: {e}', command_def)
             kwargs.update(new_kwargs)
 
         return kwargs, command_def, now_command_def
@@ -930,7 +934,8 @@ class CommandMatcher(EventHandlers.Matcher):
                 return True
             except Exception as e:
                 if ConfigManager.GlobalConfig().debug.save_dump:
-                    dump_path = save_exc_dump(f"执行等待处理器 {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} 发生错误")
+                    dump_path = save_exc_dump(
+                        f"执行等待处理器 {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} 发生错误")
                 else:
                     dump_path = None
                 logger.error(
