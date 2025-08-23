@@ -7,6 +7,7 @@ import importlib
 if TYPE_CHECKING:
     from .utils import *
     from . import common
+    from . import core
 else:
     def __getattr__(name: str):
         """当访问 murainbot.name 时，按需导入并返回。"""
@@ -14,6 +15,9 @@ else:
             module_name = f".utils.{name}"
             if name == "common":
                 module_name = ".common"
+            elif name.startswith("core."):
+                module_name = f".{name}"
+            # print(module_name)
             module = importlib.import_module(module_name, __name__)
             return module
 
@@ -37,5 +41,6 @@ __all__ = [
     "QQDataCacher",
     "StateManager",
     "TimerManager",
-    "common"
+    "common",
+    "core"
 ]

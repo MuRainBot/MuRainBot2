@@ -289,7 +289,7 @@ class OptionalArg(BaseArg):
     """
 
     def __init__(self, arg: BaseArg, default: Union[str, bytes, int, float, tuple, list, dict, set, bool, None] = None):
-        if not isinstance(default, Union[str, bytes, int, float, tuple, list, dict, set, bool, None]):
+        if not isinstance(default, (str, bytes, int, float, tuple, list, dict, set, bool, type(None))):
             raise TypeError("Default value must be a basic type.(strings, bytes, numbers, tuples, lists, dicts, "
                             "sets, booleans, and None.)")
         if not isinstance(arg, BaseArg):
@@ -318,7 +318,7 @@ class OptionalArg(BaseArg):
 
 class SkipOptionalArg(BaseArg):
     def __init__(self, arg: BaseArg, default: Union[str, bytes, int, float, tuple, list, dict, set, bool, None] = None):
-        if not isinstance(default, Union[str, bytes, int, float, tuple, list, dict, set, bool, None]):
+        if not isinstance(default, (str, bytes, int, float, tuple, list, dict, set, bool, type(None))):
             raise TypeError("Default value must be a basic type.(strings, bytes, numbers, tuples, lists, dicts, "
                             "sets, booleans, and None.)")
         if not isinstance(arg, BaseArg):

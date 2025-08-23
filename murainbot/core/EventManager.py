@@ -122,10 +122,8 @@ def unregister_listener(event_class: type[T], func: Callable[[T, ...], Any]):
         raise ValueError(f"未找到函数 {func.__name__} 对应的监听器，无法为事件 {event_class.__name__} 注销。")
 
     # 移除所有找到的监听器
-    removed_count = 0
     for listener_obj in listeners_to_remove:
         listeners_list.remove(listener_obj)
-        removed_count += 1
 
     if not listeners_list:
         del event_listeners[event_class]
