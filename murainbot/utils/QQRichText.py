@@ -6,12 +6,31 @@ from __future__ import annotations
 import inspect
 import json
 import os
-from typing import Generator
-from urllib.parse import urlparse
+import re
+from copy import deepcopy
+from pathlib import Path, PureWindowsPath
+from typing import Generator, Literal
 
 from murainbot.common import save_exc_dump
 from murainbot.core import ConfigManager
 from murainbot.utils import QQDataCacher, Logger
+
+logger = Logger.get_logger()
+
+# URL正则，参考 RFC 3986
+_URL_RE = re.compile(
+    r'^'  # 行首
+    r'([A-Za-z][A-Za-z0-9+.-]*)'  # scheme
+    r':'  # 冒号
+    r'(?:(//([^/?#\s]+)([^\s#]*))'  # 方案 A: '//' authority (必有 authority) + 可选 path
+    r'|(?!//)([^\s#]*))'  # 方案 B: 没有 '//'，允许任意 path（但不能以 '//' 开头）
+    r'(?:#\S*)?'  # 可选 fragment
+    r'$'  # 行尾
+)
+
+_WINDOWS_DRIVE_RE = re.compile(r'^[A-Za-z]:[\\/]')
+
+_UNC_RE = re.compile(r'^[\\/]{2}')
 
 
 def cq_decode(text, in_cq: bool = False) -> str:
@@ -267,7 +286,7 @@ def array_2_cq(cq_array: list[dict[str, dict[str, str]]] | dict[str, dict[str, s
     return text
 
 
-def convert_to_fileurl(input_str: str) -> str:
+def convert_to_fileurl(input_str: str | os.PathLike) -> str:
     """
     自动将输入的路径转换成fileurl
     Args:
@@ -276,25 +295,43 @@ def convert_to_fileurl(input_str: str) -> str:
     Returns:
         转换后的 fileurl
     """
-    # 检查是否已经是 file:// 格式
-    if input_str.startswith("file://"):
-        return input_str
+    # 支持 PathLike 和 str
+    if not isinstance(input_str, (str, os.PathLike)):
+        raise TypeError("input must be a str or os.PathLike")
 
-    # 检查输入是否是有效的 URL
-    parsed_url = urlparse(input_str)
-    if parsed_url.scheme in ['http', 'https', 'ftp', 'file', 'data']:
-        return input_str  # 已经是 URL 格式，直接返回
+    s = os.fspath(input_str).strip()
 
-    # 检查输入是否是有效的本地文件路径
-    if os.path.isfile(input_str):
-        # 转换为 file:// 格式
-        return f"file://{os.path.abspath(input_str)}"
+    # 如果显式是 Windows 驱动器路径或 UNC，即便当前平台不是 Windows，也当作文件路径处理
+    if _WINDOWS_DRIVE_RE.match(s) or _UNC_RE.match(s):
+        try:
+            p = PureWindowsPath(s)
+        except Exception:
+            logger.exception("无效的路径输入")
+            return s
+        if not p.is_absolute():
+            raise ValueError(f"输入的路径 {s} 不是绝对路径，请使用绝对路径")
+        try:
+            return p.as_uri()
+        except Exception:
+            logger.exception("路径转换为 URI 失败")
+            return s
 
-    # 如果是相对路径或其他文件类型，则尝试转换
-    if os.path.exists(input_str):
-        return f"file://{os.path.abspath(input_str)}"
+    # 当前平台感知的绝对路径优先
+    if os.path.isabs(s):
+        try:
+            p = Path(s)
+        except Exception:
+            logger.exception("无效的路径输入")
+            return s
+        return p.as_uri()
 
-    raise ValueError("输入的路径无效，无法转换为 fileurl 格式")
+    # 判断是否是 URL（更保守的判断）
+    if _URL_RE.match(s):
+        return s
+
+    # 否则认为输入既不是绝对路径也不是可接受的 URL
+    logger.warning(f"输入的路径 {s} 不是绝对路径，也不是被接受的 URL")
+    return s
 
 
 segments = []
@@ -306,11 +343,19 @@ class SegmentMeta(type):
     元类用于自动注册 Segment 子类到全局列表 segments 和映射 segments_map 中。
     """
 
-    def __init__(cls, name, bases, dct):
+    def __init__(cls: type[Segment], name, bases, dct):
         super().__init__(name, bases, dct)
-        if 'Segment' in globals() and issubclass(cls, Segment):
-            segments.append(cls)  # 将子类添加到全局列表中
-            segments_map[cls.segment_type] = cls
+
+        # 检查类是否想要被注册
+        if getattr(cls, "_register", True):
+            # 确保 'Segment' 已经定义，并且当前类是 Segment 的子类但不是 Segment 本身
+            if 'Segment' in globals() and issubclass(cls, Segment) and cls is not Segment:
+                if not cls.segment_type:
+                    # 对于要注册的类，必须有一个有效的 segment_type
+                    raise TypeError(f"无法注册类 {name}，因为它没有设置 segment_type 属性。")
+
+                segments.append(cls)
+                segments_map[cls.segment_type] = cls
 
 
 class Segment(metaclass=SegmentMeta):
@@ -318,66 +363,108 @@ class Segment(metaclass=SegmentMeta):
     消息段
     """
     segment_type = None
+    _register = True
 
-    def __init__(self, cq: str | dict[str, dict[str, str]] | "Segment"):
-        self.cq = cq
+    def __init__(self, cq: str | dict[str, dict[str, str]] | Segment):
+        # 统一处理输入，最终得到 _seg_dict
         if isinstance(cq, str):
             array = cq_2_array(cq)
-            if len(self.array) != 1:
+            if len(array) != 1:
                 raise ValueError("cq_2_array: 输入 CQ 码格式错误")
-            self.array = array[0]
+            self._seg_dict = array[0]
         elif isinstance(cq, dict):
-            self.array = cq
+            # 进行深拷贝，防止外部修改传入的字典影响到对象内部状态
+            self._seg_dict = deepcopy(cq)
+        elif isinstance(cq, Segment):
+            # 访问seg_dict，创建一个完全独立的Segment副本
+            self._seg_dict = cq.seg_dict
         else:
-            for segment in segments:
-                if isinstance(cq, segment):
-                    self.array = cq.array
-                    break
-            else:
-                raise TypeError("Segment: 输入类型错误")
-        self.type = self.array["type"]
-        self.data = self.array.get("data", {})
+            raise TypeError("Segment: 输入类型错误")
 
-    def __str__(self):
-        return self.__repr__()
-
-    def __repr__(self):
-        self.cq = array_2_cq(self.array)
-        return self.cq
-
-    def __setitem__(self, key, value):
-        self.array[key] = value
-
-    def __getitem__(self, key):
-        return self.array.get(key)
-
-    def get(self, key, default=None):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Segment:
         """
-        获取消息段中的数据
+        从seg_dict创建一个Segment对象，由子类实现
         Args:
-            key: key
-            default: 默认值（默认为None）
+            seg_dict: 输入的seg_dict
 
         Returns:
-            获取到的数据
+            Segment对象
         """
-        return self.array.get(key, default)
+        raise NotImplementedError("Segment: creat_from_seg_dict 方法未实现")
 
-    def __delitem__(self, key):
-        del self.array[key]
+    @property
+    def type(self) -> str:
+        """获取消息段类型，直接从底层字典读取。"""
+        return self.get("type")
+
+    @type.setter
+    def type(self, value: str):
+        """设置消息段类型，直接修改底层字典。"""
+        self["type"] = value
+
+    @property
+    def data(self) -> dict:
+        """
+        获取data字典。
+        直接返回底层字典中的data字典的引用。
+        如果data不存在，则创建并返回一个空字典。
+        """
+        return self._seg_dict.setdefault("data", {})
+
+    @data.setter
+    def data(self, value: dict):
+        """设置data字典，直接修改底层字典。"""
+        if not isinstance(value, dict):
+            raise TypeError("data 必须是一个字典")
+        self._seg_dict["data"] = value
+
+    @property
+    def seg_dict(self) -> dict:
+        """获取当前Segment的字典的拷贝。"""
+        return deepcopy(self._seg_dict)
+
+    def __str__(self):
+        return array_2_cq(self._seg_dict)
+
+    def __repr__(self):
+        return f"Segment({self._seg_dict!r})"  # repr应该更明确
 
     def __eq__(self, other):
-        other = Segment(other)
-        return self.array == other.array
-
-    def __contains__(self, other):
-        if isinstance(other, Segment):
-            return all(item in self.array for item in other.array)
-        else:
+        if not isinstance(other, Segment):
             try:
-                return str(other) in str(self)
-            except (TypeError, AttributeError):
-                return False
+                other = Segment(other)
+            except (TypeError, ValueError):
+                return NotImplemented
+        return self._seg_dict == other._seg_dict
+
+    def get(self, key, default=None):
+        return self._seg_dict.get(key, default)
+
+    def __getitem__(self, key):
+        return self._seg_dict[key]
+
+    def __setitem__(self, key, value):
+        self._seg_dict[key] = value
+
+    def __delitem__(self, key):
+        del self._seg_dict[key]
+
+    def set_data(self, key, value):
+        """设置消息段的Data项。"""
+        self.data[key] = value
+
+    def get_data(self, key, default=None):
+        """获取消息段的Data项。"""
+        return self.data.get(key, default)
+
+    def copy(self):
+        """
+        复制消息段，深拷贝
+        Returns:
+            新的Segment对象
+        """
+        return Segment(self)
 
     def render(self, group_id: int | None = None):
         """
@@ -387,16 +474,7 @@ class Segment(metaclass=SegmentMeta):
         Returns:
             渲染完毕的消息段
         """
-        return f"[{self.array.get('type', 'unknown')}: {self.cq}]"
-
-    def set_data(self, k, v):
-        """
-        设置消息段的Data项
-        Args:
-            k: 要修改的key
-            v: 要修改成的value
-        """
-        self.array["data"][k] = v
+        return f"[{self.type}: {self}]"
 
 
 segments.append(Segment)
@@ -404,345 +482,420 @@ segments.append(Segment)
 
 class Text(Segment):
     """
-    文本消息段
+    文本
     """
     segment_type = "text"
 
-    def __init__(self, text):
+    def __init__(self, text: str):
+        super().__init__({"type": self.segment_type, "data": {"text": str(text)}})
+
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Text:
         """
+        从seg_dict创建一个Text对象
         Args:
-            text: 文本
+            seg_dict: 输入的seg_dict
+
+        Returns:
+            Text对象
         """
-        self.text = text
-        super().__init__({"type": "text", "data": {"text": text}})
+        return cls(text=seg_dict.get("data", {}).get("text", ""))
 
-    def __add__(self, other):
-        other = Text(other)
-        return self.text + other.text
+    @property
+    def text(self) -> str:
+        return self.data.get("text", "")
 
-    def __eq__(self, other):
-        other = Text(other)
-        return self.text == other.text
+    @text.setter
+    def text(self, value: str):
+        self.data["text"] = str(value)
 
-    def __contains__(self, other):
-        if isinstance(other, Text):
-            return other.text in self.text
-        else:
-            try:
-                return str(other) in str(self.text)
-            except (TypeError, AttributeError):
-                return False
+    def __bool__(self):
+        return bool(self.text)
 
-    def set_text(self, text):
-        """
-        设置文本
-        Args:
-            text: 文本
-        """
-        self.text = text
-        self["data"]["text"] = text
-
-    def render(self, group_id: int | None = None):
+    def render(self, group_id: int | None = None) -> str:
         return self.text
 
 
 class Face(Segment):
     """
-    表情消息段
+    表情
     """
     segment_type = "face"
 
-    def __init__(self, id_):
-        """
-        Args:
-            id_: 表情id
-        """
-        self.id_ = id_
-        super().__init__({"type": "face", "data": {"id": str(id_)}})
+    def __init__(self, id_: int | str):
+        super().__init__({"type": self.segment_type, "data": {"id": str(id_)}})
 
-    def set_id(self, id_):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Face:
         """
-        设置表情id
+        从seg_dict创建一个Face对象
         Args:
-            id_: 表情id
-        """
-        self.id_ = id_
-        self.array["data"]["id"] = str(id_)
+            seg_dict: 输入的seg_dict
 
-    def render(self, group_id: int | None = None):
-        return f"[表情: {self.id_}]"
+        Returns:
+            Face对象
+        """
+        return cls(id_=seg_dict.get("data", {}).get("id"))
+
+    @property
+    def id(self) -> str:
+        return self.data.get("id")
+
+    @id.setter
+    def id(self, value: int | str):
+        self.data["id"] = str(value)
+
+    def render(self, group_id: int | None = None) -> str:
+        return f"[表情: {self.id}]"
 
 
 class At(Segment):
     """
-    At消息段
+    At
     """
     segment_type = "at"
 
-    def __init__(self, qq):
-        """
-        Args:
-            qq: qq号
-        """
-        self.qq = qq
-        super().__init__({"type": "at", "data": {"qq": str(qq)}})
+    def __init__(self, qq: int | str):
+        super().__init__({"type": self.segment_type, "data": {"qq": str(qq)}})
 
-    def set_id(self, qq_id):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> At:
         """
-        设置At的id
+        从seg_dict创建一个At对象
         Args:
-            qq_id: qq号
-        """
-        self.qq = qq_id
-        self.array["data"]["qq"] = str(qq_id)
+            seg_dict: 输入的seg_dict
 
-    def render(self, group_id: int | None = None):
+        Returns:
+            At对象
+        """
+        return cls(qq=seg_dict.get("data", {}).get("qq"))
+
+    @property
+    def qq(self) -> str:
+        return self.data.get("qq")
+
+    @qq.setter
+    def qq(self, value: int | str):
+        self.data["qq"] = str(value)
+
+    def render(self, group_id: int | None = None) -> str:
+        if self.qq in ["all", "0"]:
+            return "@全体成员"
+        try:
+            qq = int(self.qq)
+        except ValueError:
+            return f"@{self.qq}"
         if group_id:
-            if str(self.qq) == "all" or str(self.qq) == "0":
-                return f"@全体成员"
-            return f"@{QQDataCacher.get_group_member_info(group_id, self.qq).get_nickname()}: {self.qq}"
+            return f"@{QQDataCacher.get_group_member_info(group_id, qq).get_nickname()}: {self.qq}"
         else:
-            return f"@{QQDataCacher.get_user_info(self.qq).nickname}: {self.qq}"
+            return f"@{QQDataCacher.get_user_info(qq).get_nickname()}: {self.qq}"
 
 
 class Image(Segment):
     """
-    图片消息段
+    图片
     """
     segment_type = "image"
 
     def __init__(self, file: str):
-        """
-        Args:
-            file: 图片文件(url，对于文件使用file url格式)
-        """
-        file = convert_to_fileurl(file)
-        self.file = file
-        super().__init__({"type": "image", "data": {"file": str(file)}})
+        super().__init__({"type": self.segment_type, "data": {"file": convert_to_fileurl(file)}})
 
-    def set_file(self, file: str):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Image:
         """
-        设置图片文件
+        从seg_dict创建一个Image对象
         Args:
-            file: 图片文件
-        """
-        file = convert_to_fileurl(file)
-        self.file = file
-        self.array["data"]["file"] = str(file)
+            seg_dict: 输入的seg_dict
 
-    def render(self, group_id: int | None = None):
-        return "[图片: %s]" % self.file
+        Returns:
+            Image对象
+        """
+        # __init__会处理convert_to_fileurl，直接传递参数即可
+        return cls(file=seg_dict.get("data", {}).get("file", ""))
+
+    @property
+    def file(self) -> str:
+        return self.data.get("file")
+
+    @file.setter
+    def file(self, value: str):
+        self.data["file"] = convert_to_fileurl(value)
+
+    def render(self, group_id: int | None = None) -> str:
+        return f"[图片: {self.file}]"
 
 
 class Record(Segment):
     """
-    语音消息段
+    语音
     """
     segment_type = "record"
 
     def __init__(self, file: str):
-        """
-        Args:
-            file: 语音文件(url，对于文件使用file url格式)
-        """
-        file = convert_to_fileurl(file)
-        self.file = file
-        super().__init__({"type": "record", "data": {"file": str(file)}})
+        super().__init__({"type": self.segment_type, "data": {"file": convert_to_fileurl(file)}})
 
-    def set_file(self, file: str):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Record:
         """
-        设置语音文件
+        从seg_dict创建一个Record对象
         Args:
-            file: 语音文件(url，对于文件使用file url格式)
-        """
-        file = convert_to_fileurl(file)
-        self.file = file
-        self.array["data"]["file"] = str(file)
+            seg_dict: 输入的seg_dict
 
-    def render(self, group_id: int | None = None):
-        return "[语音: %s]" % self.file
+        Returns:
+            Record对象
+        """
+        return cls(file=seg_dict.get("data", {}).get("file", ""))
+
+    @property
+    def file(self) -> str:
+        return self.data.get("file")
+
+    @file.setter
+    def file(self, value: str):
+        self.data["file"] = convert_to_fileurl(value)
+
+    def render(self, group_id: int | None = None) -> str:
+        return f"[语音: {self.file}]"
 
 
 class Video(Segment):
     """
-    视频消息段
+    视频
     """
     segment_type = "video"
 
     def __init__(self, file: str):
-        """
-        Args:
-            file: 视频文件(url，对于文件使用file url格式)
-        """
-        file = convert_to_fileurl(file)
-        self.file = file
-        super().__init__({"type": "video", "data": {"file": str(file)}})
+        super().__init__({"type": self.segment_type, "data": {"file": convert_to_fileurl(file)}})
 
-    def set_file(self, file: str):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Video:
         """
-        设置视频文件
+        从seg_dict创建一个Video对象
         Args:
-            file: 视频文件(url，对于文件使用file url格式)
-        """
-        file = convert_to_fileurl(file)
-        self.file = file
-        self.array["data"]["file"] = str(file)
+            seg_dict: 输入的seg_dict
 
-    def render(self, group_id: int | None = None):
+        Returns:
+            Video对象
+        """
+        return cls(file=seg_dict.get("data", {}).get("file", ""))
+
+    @property
+    def file(self) -> str:
+        return self.data.get("file")
+
+    @file.setter
+    def file(self, value: str):
+        self.data["file"] = convert_to_fileurl(value)
+
+    def render(self, group_id: int | None = None) -> str:
         return f"[视频: {self.file}]"
 
 
 class Rps(Segment):
     """
-    猜拳消息段
+    猜拳魔法表情
     """
     segment_type = "rps"
 
     def __init__(self):
-        super().__init__({"type": "rps", "data": {}})
+        super().__init__({"type": self.segment_type, "data": {}})
+
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Rps:
+        """
+        从seg_dict创建一个Rps对象
+        Args:
+            seg_dict: 输入的seg_dict
+
+        Returns:
+            Rps对象
+        """
+        return cls()
 
 
 class Dice(Segment):
+    """
+    掷骰子魔法表情
+    """
     segment_type = "dice"
 
     def __init__(self):
-        super().__init__({"type": "dice", "data": {}})
+        super().__init__({"type": self.segment_type, "data": {}})
+
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Dice:
+        """
+        从seg_dict创建一个Dice对象
+        Args:
+            seg_dict: 输入的seg_dict
+
+        Returns:
+            Dice对象
+        """
+        return cls()
 
 
 class Shake(Segment):
     """
-    窗口抖动消息段
+    窗口抖动
     (相当于戳一戳最基本类型的快捷方式。)
     """
     segment_type = "shake"
 
     def __init__(self):
-        super().__init__({"type": "shake", "data": {}})
+        super().__init__({"type": self.segment_type, "data": {}})
+
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Shake:
+        """
+        从seg_dict创建一个Shake对象
+        Args:
+            seg_dict: 输入的seg_dict
+
+        Returns:
+            Shake对象
+        """
+        return cls()
 
 
 class Poke(Segment):
     """
-    戳一戳消息段
+    戳一戳
     """
     segment_type = "poke"
 
-    def __init__(self, type_, id_):
-        """
-        Args:
-            type_: 见https://github.com/botuniverse/onebot-11/blob/master/message/segment.md#%E6%88%B3%E4%B8%80%E6%88%B3
-            id_: 同上
-        """
-        self.type = type_
-        self.id_ = id_
-        super().__init__({"type": "poke", "data": {"type": str(self.type)}, "id": str(self.id_)})
+    def __init__(self, type_: str | int, id_: str | int):
+        super().__init__({"type": self.segment_type, "data": {"type": str(type_), "id": str(id_)}})
 
-    def set_type(self, type_):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Poke:
         """
-        设置戳一戳类型
+        从seg_dict创建一个Poke对象
         Args:
-            type_: 见https://github.com/botuniverse/onebot-11/blob/master/message/segment.md#%E6%88%B3%E4%B8%80%E6%88%B3
-        """
-        self.type = type_
-        self.array["data"]["type"] = str(type_)
+            seg_dict: 输入的seg_dict
 
-    def set_id(self, id_):
+        Returns:
+            Poke对象
         """
-        设置戳一戳id
-        Args:
-            id_: 戳一戳id
-        """
-        self.id_ = id_
-        self.array["data"]["id"] = str(id_)
+        data = seg_dict.get("data", {})
+        return cls(type_=data.get("type"), id_=data.get("id"))
 
-    def render(self, group_id: int | None = None):
-        return f"[戳一戳: {self.type}]"
+    @property
+    def poke_type(self) -> str:
+        return self.data.get("type")
+
+    @poke_type.setter
+    def poke_type(self, value: str | int):
+        self.data["type"] = str(value)
+
+    @property
+    def id(self) -> str:
+        return self.data.get("id")
+
+    @id.setter
+    def id(self, value: str | int):
+        self.data["id"] = str(value)
+
+    def render(self, group_id: int | None = None) -> str:
+        return f"[戳一戳: type={self.poke_type}, id={self.id}]"
 
 
 class Anonymous(Segment):
     """
-    匿名消息段
+    匿名消息
     """
     segment_type = "anonymous"
 
-    def __init__(self, ignore=False):
-        """
-        Args:
-            ignore: 是否忽略
-        """
-        self.ignore = 0 if ignore else 1
-        super().__init__({"type": "anonymous", "data": {"ignore": str(self.ignore)}})
+    def __init__(self, ignore: bool = False):
+        super().__init__({"type": self.segment_type, "data": {"ignore": "0" if ignore else "1"}})
 
-    def set_ignore(self, ignore):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Anonymous:
         """
-        设置是否忽略
+        从seg_dict创建一个Anonymous对象
         Args:
-            ignore: 是否忽略
+            seg_dict: 输入的seg_dict
+
+        Returns:
+            Anonymous对象
         """
-        self.ignore = 0 if ignore else 1
-        self.array["data"]["ignore"] = str(self.ignore)
+        # __init__中的逻辑是反的：ignore=True 存 "0"，ignore=False 存 "1"
+        # 因此这里也需要反向转换
+        ignore_val = seg_dict.get("data", {}).get("ignore")
+        return cls(ignore=(ignore_val == "0"))
+
+    @property
+    def ignore(self) -> bool:
+        return self.data.get("ignore", "0") != "0"
+
+    @ignore.setter
+    def ignore(self, value: bool):
+        self.data["ignore"] = "0" if value else "1"
 
 
 class Share(Segment):
     """
-    链接分享消息段
+    链接分享
     """
     segment_type = "share"
 
-    def __init__(self, url, title, content="", image=""):
+    def __init__(self, url: str, title: str, content: str = "", image: str = ""):
+        data = {"url": str(url), "title": str(title)}
+        if content:
+            data["content"] = str(content)
+        if image:
+            data["image"] = str(image)
+        super().__init__({"type": self.segment_type, "data": data})
+
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Share:
         """
+        从seg_dict创建一个Share对象
         Args:
-            url: URL
-            title: 标题
-            content: 发送时可选，内容描述
-            image: 发送时可选，图片 URL
-        """
-        self.url = url
-        self.title = title
-        self.content = content
-        self.image = image
-        super().__init__({"type": "share", "data": {"url": str(self.url), "title": str(self.title)}})
+            seg_dict: 输入的seg_dict
 
-        if content != "":
-            self.array["data"]["content"] = str(self.content)
+        Returns:
+            Share对象
+        """
+        data = seg_dict.get("data", {})
+        return cls(
+            url=data.get("url"),
+            title=data.get("title"),
+            content=data.get("content", ""),
+            image=data.get("image", "")
+        )
 
-        if image != "":
-            self.array["data"]["image"] = str(self.image)
+    @property
+    def url(self) -> str:
+        return self.data.get("url")
 
-    def set_url(self, url):
-        """
-        设置URL
-        Args:
-            url: URL
-        """
-        self.array["data"]["url"] = str(url)
-        self.url = url
+    @url.setter
+    def url(self, value: str):
+        self.data["url"] = str(value)
 
-    def set_title(self, title):
-        """
-        设置标题
-        Args:
-            title: 标题
-        """
-        self.title = title
-        self.array["data"]["title"] = str(title)
+    @property
+    def title(self) -> str:
+        return self.data.get("title")
 
-    def set_content(self, content):
-        """
-        设置内容描述
-        Args:
-            content: 内容描述
-        """
-        self.content = content
-        self.array["data"]["content"] = str(content)
+    @title.setter
+    def title(self, value: str):
+        self.data["title"] = str(value)
 
-    def set_image(self, image):
-        """
-        设置图片 URL
-        Args:
-            image: 图片 URL
-        """
-        self.image = image
-        self.array["data"]["image"] = str(image)
+    @property
+    def content(self) -> str:
+        return self.data.get("content")
+
+    @content.setter
+    def content(self, value: str):
+        self.data["content"] = str(value)
+
+    @property
+    def image(self) -> str:
+        return self.data.get("image")
+
+    @image.setter
+    def image(self, value: str):
+        self.data["image"] = str(value)
 
 
 class Contact(Segment):
@@ -751,158 +904,187 @@ class Contact(Segment):
     """
     segment_type = "contact"
 
-    def __init__(self, type_, id_):
-        """
-        Args:
-            type_: 推荐的类型（friend/group）
-            id_: 推荐的qqid
-        """
-        self.type = type_
-        self.id = id_
-        super().__init__({"type": "contact", "data": {"type": str(self.type), "id": str(self.id)}})
+    def __init__(self, type_: str, id_: str | int):
+        super().__init__({"type": self.segment_type, "data": {"type": str(type_), "id": str(id_)}})
 
-    def set_type(self, type_):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Contact:
         """
-        设置推荐类型
+        从seg_dict创建一个Contact对象
         Args:
-            type_: 推荐的类型（friend/group）
-        """
-        self.type = type_
-        self.array["data"]["type"] = str(type_)
+            seg_dict: 输入的seg_dict
 
-    def set_id(self, id_):
+        Returns:
+            Contact对象
         """
-        设置推荐的qqid
-        Args:
-            id_: qqid
-        """
-        self.id = id_
-        self.array["data"]["id"] = str(id_)
+        data = seg_dict.get("data", {})
+        return cls(type_=data.get("type"), id_=data.get("id"))
+
+    @property
+    def contact_type(self) -> str: return self.data.get("type")
+
+    @contact_type.setter
+    def contact_type(self, value: str): self.data["type"] = str(value)
+
+    @property
+    def id(self) -> str: return self.data.get("id")
+
+    @id.setter
+    def id(self, value: str | int): self.data["id"] = str(value)
 
 
 class Location(Segment):
-    """
-    位置消息段
-    """
     segment_type = "location"
 
-    def __init__(self, lat, lon, title="", content=""):
+    def __init__(self, lat: float | str, lon: float | str, title: str = "", content: str = ""):
+        data = {"lat": str(lat), "lon": str(lon)}
+        if title:
+            data["title"] = str(title)
+        if content:
+            data["content"] = str(content)
+        super().__init__({"type": self.segment_type, "data": data})
+
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Location:
         """
+        从seg_dict创建一个Location对象
         Args:
-            lat: 纬度
-            lon: 经度
-            title: 发送时可选，标题
-            content: 发送时可选，内容描述
-        """
-        self.lat = lat
-        self.lon = lon
-        self.title = title
-        self.content = content
-        super().__init__({"type": "location", "data": {"lat": str(self.lat), "lon": str(self.lon)}})
+            seg_dict: 输入的seg_dict
 
-        if title != "":
-            self.array["data"]["title"] = str(self.title)
+        Returns:
+            Location对象
+        """
+        data = seg_dict.get("data", {})
+        return cls(
+            lat=data.get("lat"),
+            lon=data.get("lon"),
+            title=data.get("title", ""),
+            content=data.get("content", "")
+        )
 
-        if content != "":
-            self.array["data"]["content"] = str(self.content)
+    @property
+    def lat(self) -> str:
+        return self.data.get("lat")
 
-    def set_lat(self, lat):
-        """
-        设置纬度
-        Args:
-            lat: 纬度
-        """
-        self.lat = lat
-        self.array["data"]["lat"] = str(lat)
+    @lat.setter
+    def lat(self, value: float | str):
+        self.data["lat"] = str(value)
 
-    def set_lon(self, lon):
-        """
-        设置经度
-        Args:
-            lon: 经度
-        """
-        self.lon = lon
-        self.array["data"]["lon"] = str(lon)
+    @property
+    def lon(self) -> str:
+        return self.data.get("lon")
 
-    def set_title(self, title):
-        """
-        设置标题
-        Args:
-            title: 标题
-        """
-        self.title = title
-        self.array["data"]["title"] = str(title)
+    @lon.setter
+    def lon(self, value: float | str):
+        self.data["lon"] = str(value)
 
-    def set_content(self, content):
-        """
-        设置内容描述
-        Args:
-            content: 内容描述
-        """
-        self.content = content
-        self.array["data"]["content"] = str(content)
+    @property
+    def title(self) -> str:
+        return self.data.get("title")
+
+    @title.setter
+    def title(self, value: str):
+        self.data["title"] = str(value)
+
+    @property
+    def content(self) -> str:
+        return self.data.get("content")
+
+    @content.setter
+    def content(self, value: str):
+        self.data["content"] = str(value)
 
 
 class Node(Segment):
     """
     合并转发消息节点
+    ***此消息段不可被放入QQRichText内***
     接收时，此消息段不会直接出现在消息事件的 message 中，需通过 get_forward_msg API 获取。
     这是最阴间的消息段之一，tm的Onebot协议，各种转换的细节根本就没定义清楚，感觉CQ码的支持就像后加的，而且纯纯草台班子
     """
     segment_type = "node"
+    _register = False  # 防止被注册
 
-    def __init__(self, name: str, user_id: int, message, message_id: int = None):
+    def __init__(self, nickname: str = None, user_id: int = None, content: QQRichText | list[dict | Segment] = None,
+                 message_id: int = None):
         """
         Args:
-            name: 发送者昵称
+            nickname: 发送者昵称
             user_id: 发送者 QQ 号
-            message: 消息内容
+            content: 消息内容
             message_id: 消息 ID（选填，若设置，上面三者失效）
         """
         if message_id is None:
-            self.name = name
-            self.user_id = user_id
-            self.message = QQRichText(message).get_array()
-            super().__init__({"type": "node", "data": {"nickname": str(self.name), "user_id": str(self.user_id),
-                                                       "content": self.message}})
+            if not isinstance(content, QQRichText):
+                content = QQRichText(content)
+            super().__init__({"type": self.segment_type, "data": {"nickname": str(nickname), "user_id": str(user_id),
+                                                                  "content": content.get_array()}})
         else:
             self.message_id = message_id
-            super().__init__({"type": "node", "data": {"id": str(message_id)}})
+            super().__init__({"type": self.segment_type, "data": {"id": str(message_id)}})
 
-    def set_message(self, message):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Node:
         """
-        设置消息
+        从seg_dict创建一个Node对象
         Args:
-            message: 消息内容
-        """
-        self.message = QQRichText(message).get_array()
-        self.array["data"]["content"] = self.message
+            seg_dict: 输入的seg_dict
 
-    def set_name(self, name):
+        Returns:
+            Node对象
         """
-        设置发送者昵称
-        Args:
-            name: 发送者昵称
-        """
-        self.name = name
-        self.array["data"]["name"] = str(name)
+        data = seg_dict.get("data", {})
+        if "id" in data:
+            return cls(message_id=data.get("id"))
+        else:
+            return cls(
+                nickname=data.get("nickname"),
+                user_id=data.get("user_id"),
+                content=data.get("content")
+            )
 
-    def set_user_id(self, user_id):
-        """
-        设置发送者 QQ 号
-        Args:
-            user_id: 发送者 QQ 号
-        """
-        self.user_id = user_id
-        self.array["data"]["uin"] = str(user_id)
+    @property
+    def id(self) -> int:
+        return self.data.get("id")
+
+    @id.setter
+    def id(self, value: int):
+        self.data["id"] = str(value)
+
+    @property
+    def nickname(self) -> str:
+        return self.data.get("nickname")
+
+    @nickname.setter
+    def nickname(self, value: str):
+        self.data["nickname"] = str(value)
+
+    @property
+    def user_id(self) -> int:
+        return self.data.get("user_id")
+
+    @user_id.setter
+    def user_id(self, value: int):
+        self.data["user_id"] = str(value)
+
+    @property
+    def content(self) -> QQRichText:
+        return self.data.get("content")
+
+    @content.setter
+    def content(self, value: QQRichText):
+        self.data["content"] = value.get_array()
+
+    def get_content(self) -> QQRichText:
+        return QQRichText(self.data.get("content"))
 
     def render(self, group_id: int | None = None):
         if self.message_id is not None:
-            return f"[合并转发节点: {self.name}({self.user_id}): {self.message}]"
+            return f"[合并转发节点: {self.nickname}({self.user_id}): {self.get_content()}]"
         else:
-            return f"[合并转发节点: {self.message_id}]"
+            return f"[合并转发节点: {self.id}]"
 
-    def __repr__(self):
+    def __str__(self):
         """
         去tm的CQ码
         Raises:
@@ -917,33 +1099,45 @@ class Music(Segment):
     """
     segment_type = "music"
 
-    def __init__(self, type_, id_):
+    def __init__(self, type_: Literal["qq", "163", "xm"], id_):
         """
         Args:
             type_: 音乐类型（可为qq 163 xm）
             id_: 音乐 ID
         """
-        self.type = type_
-        self.id = id_
-        super().__init__({"type": "music", "data": {"type": str(self.type), "id": str(self.id)}})
+        super().__init__({"type": self.segment_type, "data": {"type": str(type_), "id": str(id_)}})
 
-    def set_type(self, type_):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Music:
         """
-        设置音乐类型
+        从seg_dict创建一个Music对象
         Args:
-            type_: 音乐类型（qq 163 xm）
-        """
-        self.type = type_
-        self.array["data"]["type"] = str(type_)
+            seg_dict: 输入的seg_dict
 
-    def set_id(self, id_):
+        Returns:
+            Music对象
         """
-        设置音乐 ID
-        Args:
-            id_: 音乐 ID
-        """
-        self.id = id_
-        self.array["data"]["id"] = str(id_)
+        data = seg_dict.get("data", {})
+        # 对于自定义音乐类型，应使用CustomizeMusic类
+        if data.get("type") == "custom":
+            return CustomizeMusic.creat_from_seg_dict(seg_dict)
+        return cls(type_=data.get("type"), id_=data.get("id"))
+
+    @property
+    def type(self) -> str:
+        return self.data.get("type")
+
+    @type.setter
+    def type(self, value: str):
+        self.data["type"] = str(value)
+
+    @property
+    def id(self) -> str:
+        return self.data.get("id")
+
+    @id.setter
+    def id(self, value: str):
+        self.data["id"] = str(value)
 
 
 class CustomizeMusic(Segment):
@@ -952,126 +1146,164 @@ class CustomizeMusic(Segment):
     """
     segment_type = "music"
 
-    def __init__(self, url, audio, image, title="", content=""):
+    def __init__(self, url: str, audio: str, title: str, image: str = "", content: str = ""):
         """
         Args:
             url: 点击后跳转目标 URL
             audio: 音乐 URL
-            image: 标题
-            title: 发送时可选，内容描述
-            content: 发送时可选，图片 URL
+            title: 标题
+            image: 发送时可选，图片 URL
+            content: 发送时可选，内容描述
         """
-        self.url = url
-        self.audio = audio
-        self.image = image
-        self.title = title
-        self.content = content
-        super().__init__({"type": "music", "data": {"type": "custom", "url": str(self.url), "audio": str(self.audio),
-                                                    "image": str(self.image)}})
-        if title != "":
-            self.array["data"]["title"] = str(self.title)
+        super().__init__(
+            {
+                "type": self.segment_type,
+                "data": {
+                    "type": "custom",
+                    "url": str(url),
+                    "title": str(title),
+                    "audio": str(audio),
+                }
+            }
+        )
+        if image != "":
+            self.data["image"] = str(image)
 
         if content != "":
-            self.array["data"]["content"] = str(self.content)
+            self.data["content"] = str(content)
 
-    def set_url(self, url):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> CustomizeMusic:
         """
-        设置 URL
+        从seg_dict创建一个CustomizeMusic对象
         Args:
-            url: 点击后跳转目标 URL
-        """
-        self.url = url
-        self.array["data"]["url"] = str(url)
+            seg_dict: 输入的seg_dict
 
-    def set_audio(self, audio):
+        Returns:
+            CustomizeMusic对象
         """
-        设置音乐 URL
-        Args:
-            audio: 音乐 URL
-        """
-        self.audio = audio
-        self.array["data"]["audio"] = str(audio)
+        data = seg_dict.get("data", {})
+        return cls(
+            url=data.get("url"),
+            audio=data.get("audio"),
+            title=data.get("title"),
+            image=data.get("image", ""),
+            content=data.get("content", "")
+        )
 
-    def set_image(self, image):
-        """
-        设置图片 URL
-        Args:
-            image: 图片 URL
-        """
-        self.image = image
-        self.array["data"]["image"] = str(image)
+    @property
+    def url(self) -> str:
+        return self.data.get("url")
 
-    def set_title(self, title):
-        """
-        设置标题
-        Args:
-            title: 标题
-        """
-        self.title = title
-        self.array["data"]["title"] = str(title)
+    @url.setter
+    def url(self, value: str):
+        self.data["url"] = str(value)
 
-    def set_content(self, content):
-        """
-        设置内容描述
-        Args:
-            content:
-        """
-        self.content = content
-        self.array["data"]["content"] = str(content)
+    @property
+    def title(self) -> str:
+        return self.data.get("title")
+
+    @title.setter
+    def title(self, value: str):
+        self.data["title"] = str(value)
+
+    @property
+    def audio(self) -> str:
+        return self.data.get("audio")
+
+    @audio.setter
+    def audio(self, value: str):
+        self.data["audio"] = str(value)
+
+    @property
+    def image(self) -> str:
+        return self.data.get("image")
+
+    @image.setter
+    def image(self, value: str):
+        self.data["image"] = str(value)
+
+    @property
+    def content(self) -> str:
+        return self.data.get("content")
+
+    @content.setter
+    def content(self, value: str):
+        self.data["content"] = str(value)
 
 
 class Reply(Segment):
     """
-    回复消息段
+    回复
     """
     segment_type = "reply"
 
-    def __init__(self, id_):
+    def __init__(self, id_: int | str):
         """
-        Args:
-            id_: 回复消息 ID
-        """
-        self.id_ = id_
-        super().__init__({"type": "reply", "data": {"id": str(self.id_)}})
+                Args:
+                    id_: 回复消息 ID
+                """
+        super().__init__({"type": self.segment_type, "data": {"id": str(id_)}})
 
-    def set_id(self, id_):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Reply:
         """
-        设置消息 ID
+        从seg_dict创建一个Reply对象
         Args:
-            id_: 消息 ID
+            seg_dict: 输入的seg_dict
+
+        Returns:
+            Reply对象
         """
-        self.id_ = id_
-        self.array["data"]["id"] = str(self.id_)
+        return cls(id_=seg_dict.get("data", {}).get("id"))
+
+    @property
+    def id(self):
+        return self.data.get("id")
+
+    @id.setter
+    def id(self, value: int):
+        self.data["id"] = value
 
     def render(self, group_id: int | None = None):
-        return f"[回复: {self.id_}]"
+        return f"[回复: {self.id}]"
 
 
 class Forward(Segment):
     """
-    合并转发消息段
+    合并转发
     """
     segment_type = "forward"
 
-    def __init__(self, id_):
+    def __init__(self, id_: str):
         """
-        Args:
-            id_: 合并转发消息 ID
-        """
-        self.id_ = id_
-        super().__init__({"type": "forward", "data": {"id": str(self.id_)}})
+                Args:
+                    id_: 合并转发消息 ID
+                """
+        super().__init__({"type": self.segment_type, "data": {"id": str(id_)}})
 
-    def set_id(self, id_):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> Forward:
         """
-        设置合并转发 ID
+        从seg_dict创建一个Forward对象
         Args:
-            id_: 合并转发消息 ID
+            seg_dict: 输入的seg_dict
+
+        Returns:
+            Forward对象
         """
-        self.id_ = id_
-        self.array["data"]["id"] = str(self.id_)
+        return cls(id_=seg_dict.get("data", {}).get("id"))
+
+    @property
+    def id(self):
+        return self.data.get("id")
+
+    @id.setter
+    def id(self, value: int):
+        self.data["id"] = value
 
     def render(self, group_id: int | None = None):
-        return f"[合并转发: {self.id_}]"
+        return f"[合并转发: {self.id}]"
 
 
 class XML(Segment):
@@ -1080,18 +1312,28 @@ class XML(Segment):
     """
     segment_type = "xml"
 
-    def __init__(self, data):
-        self.xml_data = data
-        super().__init__({"type": "xml", "data": {"data": str(self.xml_data)}})
+    def __init__(self, data: str):
+        super().__init__({"type": self.segment_type, "data": {"data": str(data)}})
 
-    def set_xml_data(self, data):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> XML:
         """
-        设置xml数据
+        从seg_dict创建一个XML对象
         Args:
-            data: xml数据
+            seg_dict: 输入的seg_dict
+
+        Returns:
+            XML对象
         """
-        self.xml_data = data
-        self.array["data"]["data"] = str(self.xml_data)
+        return cls(data=seg_dict.get("data", {}).get("data"))
+
+    @property
+    def xml(self):
+        return self.data.get("data")
+
+    @xml.setter
+    def xml(self, value):
+        self.data["data"] = str(value)
 
 
 class JSON(Segment):
@@ -1100,22 +1342,35 @@ class JSON(Segment):
     """
     segment_type = "json"
 
-    def __init__(self, data):
-        """
-        Args:
-            data: JSON 内容
-        """
-        self.json_data = data
-        super().__init__({"type": "json", "data": {"data": str(self.json_data)}})
+    def __init__(self, data: str | dict | list):
+        if isinstance(data, (dict, list)):
+            data = json.dumps(data)
+        super().__init__({"type": self.segment_type, "data": {"data": data}})
 
-    def set_json(self, data):
+    @classmethod
+    def creat_from_seg_dict(cls, seg_dict: dict[str, dict[str, str]]) -> JSON:
         """
-        设置json数据
+        从seg_dict创建一个JSON对象
         Args:
-            data: json 内容
+            seg_dict: 输入的seg_dict
+
+        Returns:
+            JSON对象
         """
-        self.json_data = data
-        self.array["data"]["data"] = str(self.json_data)
+        return cls(data=seg_dict.get("data", {}).get("data"))
+
+    @property
+    def json(self) -> str:
+        """
+        获取json数据（未序列化）
+        Returns:
+            str: json数据
+        """
+        return self.data.get("data")
+
+    @json.setter
+    def json(self, value: str | dict | list):
+        self.data["data"] = value
 
     def get_json(self):
         """
@@ -1123,15 +1378,26 @@ class JSON(Segment):
         Returns:
             json: json数据
         """
-        return json.loads(self.json_data)
+        return json.loads(self.data["data"])
 
 
 def _create_segment_from_dict(segment_dict: dict) -> Segment:
     """从单个字典（array格式）创建Segment对象"""
     # 这个辅助函数和你代码中的对象化逻辑是一样的
     segment_type = segment_dict.get("type")
+    data = segment_dict.get("data", {})
+
+    # 特别处理自定义音乐
+    if segment_type == "music" and data.get("type") == "custom":
+        return CustomizeMusic.creat_from_seg_dict(segment_dict)
+
     if segment_type in segments_map:
         try:
+            try:
+                return segments_map[segment_type].creat_from_seg_dict(segment_dict)
+            except NotImplementedError:
+                logger.warning(f"{segments_map[segment_type]}的creat_from_seg_dict方法未实现，回退到__init__自动匹配初始化")
+
             params = inspect.signature(segments_map[segment_type]).parameters
             kwargs = {}
             data = segment_dict.get("data", {})
@@ -1153,12 +1419,12 @@ def _create_segment_from_dict(segment_dict: dict) -> Segment:
             return segment
         except Exception as e:
             if ConfigManager.GlobalConfig().debug.save_dump:
-                dump_path = save_exc_dump(f"转换{segment_dict}时失败")
+                dump_path = save_exc_dump(f"转换 {segment_dict} 到 {segments_map[segment_type]} 时失败")
             else:
                 dump_path = None
-            Logger.get_logger().warning(f"转换{segment_dict}时失败，报错信息: {repr(e)}"
-                                        f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                                        exc_info=True)
+            logger.warning(f"转换 {segment_dict} 到 {segments_map[segment_type]} 时失败，报错信息: {repr(e)}"
+                           f"{f'\n已保存异常到 {dump_path}' if dump_path else ''}",
+                           exc_info=True)
             return Segment(segment_dict)
     return Segment(segment_dict)
 
@@ -1170,20 +1436,19 @@ class QQRichText:
 
     def __init__(
             self,
-            *rich: dict[str, dict[str, str]] | str | Segment | "QQRichText" | list[
-                dict[str, dict[str, str]] | str | Segment | "QQRichText"]
+            *rich: dict[str, dict[str, str]] | str | Segment | QQRichText | list[
+                dict[str, dict[str, str]] | str | Segment | QQRichText]
     ):
         """
         Args:
             *rich: 富文本内容，可为 str、dict、list、tuple、Segment、QQRichText
         """
-        # __init__ 现在只做一件事：消费一个生成器来构建最终的列表
+        # 消费一个生成器来构建最终的列表
         self.rich_array: list[Segment] = list(self._iter_and_convert_segments(rich))
 
     def _iter_and_convert_segments(self, rich_items) -> Generator[Segment, None, None]:
         """
-        核心优化：单遍处理所有输入，并直接 yield 最终的 Segment 对象。
-        这完美实现了你“合并处理”的想法。
+        单遍处理所有输入，并直接 yield 最终的 Segment 对象。
         """
         # 1. 扁平化初始输入
         if len(rich_items) == 1 and isinstance(rich_items[0], (list, tuple)):
@@ -1192,10 +1457,10 @@ class QQRichText:
         # 2. 单遍处理所有项目
         for item in rich_items:
             # 分类处理，直接生成并yield Segment对象
-            if any(isinstance(item, segment) for segment in segments) and not isinstance(item, Segment):
+            if isinstance(item, Segment):
+                yield _create_segment_from_dict(item.seg_dict)
+            elif any(isinstance(item, segment) for segment in segments):
                 yield item
-            elif isinstance(item, Segment):
-                yield _create_segment_from_dict(item.array)
             elif isinstance(item, QQRichText):
                 yield from item.rich_array
             elif isinstance(item, str):
@@ -1226,22 +1491,30 @@ class QQRichText:
         return self.rich_array[index]
 
     def __add__(self, other):
-        other = QQRichText(other)
+        if not isinstance(other, QQRichText):
+            other = QQRichText(other)
         return QQRichText(self.rich_array + other.rich_array)
 
     def __eq__(self, other):
-        other = QQRichText(other)
+        if not isinstance(other, QQRichText):
+            other = QQRichText(other)
 
         return self.rich_array == other.rich_array
 
     def __contains__(self, other):
-        if isinstance(other, QQRichText):
-            return all(item in self.rich_array for item in other.rich_array)
-        else:
-            try:
-                return str(other) in str(self)
-            except (TypeError, AttributeError):
-                return False
+        if not isinstance(other, QQRichText):
+            other = QQRichText(other)
+
+        n = len(other.rich_array)
+        m = len(self.rich_array)
+        if n > m:
+            return False
+        # 只需要遍历到 self.rich_array 的倒数第 n 个元素即可
+        for i in range(m - n + 1):
+            # 如果从 i 开始的切片与 other.rich_array 相等，则找到
+            if self.rich_array[i:i + n] == other.rich_array:
+                return True
+        return False
 
     def __bool__(self):
         return bool(self.rich_array)
@@ -1252,7 +1525,7 @@ class QQRichText:
         Returns:
             rich_array
         """
-        return [array.array for array in self.rich_array]
+        return [array.seg_dict for array in self.rich_array]
 
     def add(self, *segments):
         """
@@ -1279,16 +1552,22 @@ class QQRichText:
         if len(res.rich_array) == 0:
             return res
 
-        index = 0
-        for _ in range(2 if len(res.rich_array) else 1):
+        for index in [0, -1] if res.rich_array else [0]:
             if isinstance(res.rich_array[index], Text):
-                res.rich_array[index].set_text(res.rich_array[index].text.strip())
+                res.rich_array[index].text = res.rich_array[index].text.strip()
                 if not res.rich_array[index].text:
                     res.rich_array.pop(index)
                     if not res.rich_array:
                         break
-            index = -1
         return res
+
+    def copy(self):
+        """
+        复制一份新的QQRichText，会从array开始全部重新创建，所以是深拷贝
+        Returns:
+            QQRichText
+        """
+        return QQRichText(self)
 
 
 # 使用示例
@@ -1301,9 +1580,18 @@ if __name__ == "__main__":
 
     # 测试QQRichText
     rich = QQRichText(
-        " [CQ:reply,id=123][CQ:share,title=标题,url=https://baidu.com] [CQ:at,qq=1919810,abc=123] -  &#91;x&#93; 使用 "
+        " [CQ:reply,id=123,abc=321][CQ:share,title=标题,url=https://baidu.com] -  &#91;x&#93; 使用 "
         " `&amp;data` 获取地址\n ")
     print(rich.get_array())
+
+    # 测试新的 creat_from_seg_dict 方法
+    at_dict = {'type': 'at', 'data': {'qq': '12345'}}
+    at_segment = At.creat_from_seg_dict(at_dict)
+    print(f"从字典创建的At对象: {at_segment}, 类型: {type(at_segment)}")
+
+    text_dict = {'type': 'text', 'data': {'text': 'Hello World'}}
+    text_segment = QQRichText(text_dict)[0]  # 通过QQRichText的构造逻辑调用
+    print(f"从字典创建的Text对象: {text_segment}, 类型: {type(text_segment)}")
 
     print(rich)
     print("123" + str(rich.strip()) + "123")
@@ -1311,7 +1599,7 @@ if __name__ == "__main__":
 
     print(QQRichText(rich))
 
-    print(QQRichText(At(114514), At(1919810), "114514", Reply(133).array))
+    print(QQRichText(At(114514), At(1919810), "114514", Reply(133).seg_dict))
     print(Segment(At(1919810)))
     print(QQRichText([{"type": "text", "data": {"text": "1919810"}}]))
     print(QQRichText().add(At(114514)).add(Text("我吃柠檬")) + QQRichText(At(1919810)).rich_array)
@@ -1321,7 +1609,7 @@ if __name__ == "__main__":
     print(rich.get_array())
 
     print("--- 正确示例 ---")
-    print(cq_2_array("你好[CQ:face,id=123]世界[CQ:image,file=abc.jpg,url=http://a.com/b?c=1&d=2]"))
+    print(cq_2_array("你好[CQ:face,id=123]世界[CQ:image,file=abc.jpg,url=https://a.com/b?c=1&d=2]"))
     print(cq_2_array("[CQ:shake]"))
     print(cq_2_array("只有文本"))
     print(cq_2_array("[CQ:at,qq=123][CQ:at,qq=456]"))
