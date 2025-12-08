@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 import typer
-from typing_extensions import Annotated
+from typing import Annotated
 from rich import print
 
 app = typer.Typer(
