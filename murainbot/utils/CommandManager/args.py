@@ -136,7 +136,7 @@ class IntArg(BaseArg):
             try:
                 return {self.arg_name: int(match_parameters.data.get("text"))}
             except ValueError:
-                raise ValueError(f"参数 {self.arg_name} 的值必须是数字，却得到: {match_parameters}")
+                raise ValueError(f"参数 {self.arg_name} 的值必须是整数，却得到: {match_parameters}")
         else:
             raise ValueError(f"参数 {self.arg_name} 的类型必须是文本")
 

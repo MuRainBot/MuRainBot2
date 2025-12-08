@@ -296,7 +296,6 @@ group_member_info_lock = threading.Lock()
 user_info_lock = threading.Lock()
 
 max_cache_size = ConfigManager.GlobalConfig().qq_data_cache.max_cache_size
-expire_time = expire_time
 
 
 def get_user_info(user_id: int, *args, **kwargs) -> UserData:

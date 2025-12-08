@@ -2,8 +2,8 @@
 操作
 """
 
-from murainbot.common import save_exc_dump
-from murainbot.core import OnebotAPI, ThreadPool, ConfigManager
+from murainbot.common import exc_logger
+from murainbot.core import OnebotAPI, ThreadPool
 from murainbot.utils import QQRichText, Logger, QQDataCacher
 
 logger = Logger.get_logger()
@@ -103,13 +103,7 @@ class Action:
             try:
                 self.callback(self._result)
             except Exception as e:
-                if ConfigManager.GlobalConfig().debug.save_dump:
-                    dump_path = save_exc_dump(f"执行回调函数异常")
-                else:
-                    dump_path = None
-                logger.warning(f"执行回调函数异常: {repr(e)}\n"
-                               f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                               exc_info=True)
+                exc_logger(e, f"执行回调函数异常")
         return self
 
     def call(self):
@@ -127,24 +121,12 @@ class Action:
             if self._result.is_ok:
                 self.logger(result.unwrap(), *self.args, **self.kwargs)
         except Exception as e:
-            if ConfigManager.GlobalConfig().debug.save_dump:
-                dump_path = save_exc_dump(f"调用日志记录函数异常")
-            else:
-                dump_path = None
-            logger.warning(f"调用日志记录函数异常: {repr(e)}"
-                           f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                           exc_info=True)
+            exc_logger(e, f"调用日志记录函数异常")
         if self.callback is not None:
             try:
                 self.callback(self._result)
             except Exception as e:
-                if ConfigManager.GlobalConfig().debug.save_dump:
-                    dump_path = save_exc_dump(f"执行回调函数异常")
-                else:
-                    dump_path = None
-                logger.warning(f"回调函数异常: {repr(e)}"
-                               f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                               exc_info=True)
+                exc_logger(e, f"执行回调函数异常")
         return self
 
     def logger(self, *args, **kwargs):

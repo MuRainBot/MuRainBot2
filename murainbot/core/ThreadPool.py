@@ -6,8 +6,7 @@ Created by BigCookie233
 import atexit
 from concurrent.futures import ThreadPoolExecutor
 
-from murainbot.common import save_exc_dump
-from murainbot.core import ConfigManager
+from murainbot.common import exc_logger
 from murainbot.core.ConfigManager import GlobalConfig
 from murainbot.utils.Logger import get_logger
 
@@ -41,16 +40,7 @@ def _wrapper(func, *args, **kwargs):
     try:
         return func(*args, **kwargs)
     except Exception as e:
-        if ConfigManager.GlobalConfig().debug.save_dump:
-            dump_path = save_exc_dump(f"Error in async task({func.__module__}.{func.__name__})")
-        else:
-            dump_path = None
-        # 打印到日志中
-        logger.error(
-            f"Error in async task({func.__module__}.{func.__name__}): {repr(e)}"
-            f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-            exc_info=True
-        )
+        exc_logger(e, f"Error in async task({func.__module__}.{func.__name__})")
         return None
 
 

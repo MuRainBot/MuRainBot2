@@ -147,7 +147,7 @@ class BaseArg(metaclass=ArgMeta):
             # 使用 yield from 将子生成器的所有结果逐一产出
             yield from child._generate_repr_lines(next_prefix, is_child_last)
 
-    def matcher(self, remaining_cmd) -> bool:
+    def matcher(self, remaining_cmd: QQRichText.QQRichText) -> bool:
         """
         匹配剩余命令
         Args:
@@ -158,7 +158,7 @@ class BaseArg(metaclass=ArgMeta):
         """
         return True
 
-    def handler(self, remaining_cmd) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
+    def handler(self, remaining_cmd: QQRichText.QQRichText) -> tuple[dict[str, Any], QQRichText.QQRichText | None]:
         """
         参数处理函数
         Args:
@@ -546,24 +546,30 @@ if __name__ == '__main__':
         ]), "red")}"))
     test_command_manager.register_command(
         parsing_command_def(f"/email set image {IntArg("email_id")} {ImageSegmentArg("image")}"))
-    test_command_manager.register_command(Literal('/git', next_arg_list=[
-        Literal('push', next_arg_list=[
-            TextArg(
-                'remote', [
-                    TextArg('branch')
-                ]
-            )
-        ]
+    test_command_manager.register_command(
+        Literal(
+            '/git', next_arg_list=[
+                Literal(
+                    'push', next_arg_list=[
+                        TextArg(
+                            'remote', [
+                                TextArg('branch')
+                            ]
+                        )
+                    ]
                 ),
-        Literal('pull', next_arg_list=[
-            TextArg(
-                'remote', [
-                    TextArg('branch')
-                ]
-            )
-        ]
+                Literal(
+                    'pull', next_arg_list=[
+                        TextArg(
+                            'remote', [
+                                TextArg('branch')
+                            ]
+                        )
+                    ]
                 )
-    ]))
+            ]
+        )
+    )
     print("\n".join([repr(_) for _ in test_command_manager.command_list]))
     print(test_command_manager.run_command(QQRichText.QQRichText(QQRichText.Text("/git push origin master")))[0])
     print(test_command_manager.run_command(QQRichText.QQRichText(QQRichText.Text("/email send 123 abc ded 213")))[0])
