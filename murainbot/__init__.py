@@ -41,6 +41,7 @@ __all__ = [
     "QQDataCacher",
     "StateManager",
     "TimerManager",
+    "SessionManager",
     "common",
     "core"
 ]

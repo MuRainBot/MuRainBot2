@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from . import PluginConfig
     from . import CommandManager
     from . import TimerManager
+    from . import SessionManager
 else:
     def __getattr__(name: str):
         """当访问 murainbot.name 时，按需导入并返回。"""
@@ -45,5 +46,6 @@ __all__ = [
     "PluginConfig",
     "QQDataCacher",
     "StateManager",
-    "TimerManager"
+    "TimerManager",
+    "SessionManager"
 ]

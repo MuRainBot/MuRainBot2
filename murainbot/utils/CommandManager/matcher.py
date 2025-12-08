@@ -2,28 +2,22 @@
 命令管理器的命令匹配器
 """
 import dataclasses
-import inspect
-import time
 from typing import Generator, Any, Callable
 
-from murainbot.utils import EventClassifier, QQRichText, Actions, EventHandlers, TimerManager, StateManager
-
+from murainbot.common import inject_dependencies, exc_logger
+from murainbot.core import EventManager, PluginManager
+from murainbot.utils import EventClassifier, QQRichText, Actions, EventHandlers, StateManager
 from murainbot.utils.CommandManager import BaseArg, parsing_command_def, CommandManager, logger, NotMatchCommandError, \
     CommandMatchError
-from murainbot.common import save_exc_dump, inject_dependencies
-
-from murainbot.core import EventManager, ConfigManager, PluginManager
-from murainbot.core.ThreadPool import async_task
 
 __all__ = [
     "CommandMatcher",
-    "WaitHandler",
     "WaitCommand",
-    "WaitAction",
-    "WaitTimeoutError",
     "CommandEvent",
     "on_command"
 ]
+
+from murainbot.utils.SessionManager import WaitAction, TriggerEvent
 
 
 @EventClassifier.register_event("message")
@@ -68,42 +62,27 @@ class CommandEvent(EventClassifier.MessageEvent):
         ).call()
 
 
-class WaitTimeoutError(Exception):
+def _command_matcher_error_handler(event_data: CommandEvent, exc: Exception):
     """
-    等待超时异常
-    """
+    命令匹配错误处理
+    Args:
+        event_data: 发生错误的事件
+        exc: 异常
 
-
-@dataclasses.dataclass
-class WaitHandler:
+    Returns:
+        None
     """
-    等待中的处理器的数据
-    """
-    generator: Generator["WaitAction", tuple[EventManager.Event | None, Any], Any]
-    raw_event_data: CommandEvent
-    raw_handler: Callable[[...], ...]
-    wait_timeout: int | None = 60
-
-
-@dataclasses.dataclass
-class WaitAction:
-    """
-    等待操作
-    """
-    wait_trigger: Callable[["CommandMatcher.TriggerEvent"], ...]
-    timeout: int | None = 60
-    matcher: "CommandMatcher" = dataclasses.field(init=False)
-    wait_handler: WaitHandler = dataclasses.field(init=False)
-
-    def set_data(self, matcher: "CommandMatcher", wait_handler: WaitHandler):
-        """
-        设置数据，由框架调用，**无需插件开发者手动调用**
-        Args:
-            matcher: 匹配器
-            wait_handler: 等待处理器
-        """
-        self.matcher = matcher
-        self.wait_handler = wait_handler
+    try:
+        raise exc
+    except NotMatchCommandError as e:
+        logger.error(f"未匹配到命令: {repr(e)}", exc_info=True)
+        event_data.reply(f"未匹配到命令: {e}")
+    except CommandMatchError as e:
+        logger.info(f"命令匹配错误: {repr(e)}", exc_info=True)
+        event_data.reply(f"命令匹配错误，请检查命令是否正确: {e}")
+    except Exception as e:
+        exc_logger(e, f"在事件 {event_data.event_data} 中进行命令处理发生未知错误")
+        event_data.reply(f"命令处理发生未知错误: {repr(e)}")
 
 
 @dataclasses.dataclass
@@ -114,6 +93,9 @@ class WaitCommand(WaitAction):
     wait_command_def: BaseArg | str | None = None
     user_id: int | None = -1  # -1则为当前这个事件的用户，None则为任意用户，如果是群聊则仅限该群
     wait_trigger: Callable[["CommandMatcher.TriggerEvent"], ...] = dataclasses.field(init=False)
+    ignore_error: bool = True
+    error_handler: Callable[[CommandEvent, Exception], ...] = dataclasses.field(default=_command_matcher_error_handler)
+    rules: list[EventHandlers.Rule] = dataclasses.field(default_factory=list)
 
     def __post_init__(self):
         if isinstance(self.wait_command_def, str):
@@ -137,21 +119,41 @@ def _wait_command_trigger(wait_command: CommandManager | None, wait_action: Wait
         触发器
     """
 
-    def trigger(trigger_event: CommandMatcher.TriggerEvent):
+    def trigger(trigger_event: TriggerEvent):
         def on_evnet(event_data: CommandEvent):
             if not wait_action.wait_handler:
                 raise RuntimeError("等待处理器未设置")
             handler = wait_action.wait_handler
-            wait_user_id = handler.raw_event_data.user_id if wait_action.user_id == -1 else wait_action.user_id
-            if handler.raw_event_data.is_group and event_data.get("group_id") != handler.raw_event_data["group_id"]:
-                return
+            if hasattr(handler.raw_event_data, "is_group"):
+                if handler.raw_event_data.is_group and event_data.get("group_id") != handler.raw_event_data["group_id"]:
+                    return
+            if hasattr(handler.raw_event_data, "user_id") or wait_action.user_id != -1:
+                wait_user_id = handler.raw_event_data.user_id if wait_action.user_id == -1 else wait_action.user_id
+            else:
+                raise RuntimeError("WaitCommand: 等待处理器的事件不包含user_id属性")
             if wait_user_id is None or wait_user_id == event_data.user_id:
+                kwargs = {}
+                for rule in wait_action.rules:
+                    res = rule.match(event_data)
+                    if isinstance(res, tuple):
+                        res, rule_kwargs = res
+                        kwargs.update(rule_kwargs)
+                    if not res:
+                        return
                 if isinstance(wait_command, CommandManager):
                     try:
-                        kwargs, _, _ = wait_command.run_command(event_data.message)
-                    except Exception:
+                        command_kwargs, _, _ = wait_command.run_command(event_data.message)
+                    except Exception as e:
+                        if not wait_action.ignore_error:
+                            try:
+                                wait_action.error_handler(event_data, e)
+                            except Exception as e:
+                                logger.exception(f"在捕获命令时出现错误，同时执行错误处理程序时也出错: {repr(e)}")
+                                raise e
                         return
-                    trigger_event.set_data((event_data, kwargs))
+                    kwargs.update(command_kwargs)
+
+                trigger_event.set_data((event_data, kwargs))
                 EventManager.unregister_listener(CommandEvent, on_evnet)
                 trigger_event.call()
 
@@ -160,130 +162,20 @@ def _wait_command_trigger(wait_command: CommandManager | None, wait_action: Wait
     return trigger
 
 
-def throw_timeout_error(matcher: "CommandMatcher", handler: WaitHandler):
-    """
-    抛出超时错误
-    Args:
-        matcher: 等待的处理器所属的匹配器
-        handler: 等待的处理器
-
-    Returns:
-        None
-    """
-    for waiting_handler in matcher.waiting_handlers:
-        if waiting_handler is handler:
-            try:
-                waiting_handler.generator.throw(WaitTimeoutError("等待超时"))
-            except StopIteration:
-                pass
-            try:
-                matcher.waiting_handlers.remove(waiting_handler)
-            except ValueError:
-                pass
-            return
-
-
 class CommandMatcher(EventHandlers.Matcher):
     """
     命令匹配器
     """
 
-    class TriggerEvent(EventManager.Event):
-        def __init__(self, wait_handler: WaitHandler):
-            self.wait_handler = wait_handler
-            self.data = None
-
-        def set_data(self, data):
-            """
-            设置返回数据
-            Args:
-                data: 返回数据
-            """
-            self.data = data
-
-    def __init__(self, plugin_data, rules: list[EventHandlers.Rule] = None):
+    def __init__(
+            self, plugin_data, rules: list[EventHandlers.Rule] = None,
+            command_matcher_error_handler: Callable[[CommandEvent, Exception], None] = None
+    ):
         super().__init__(plugin_data, rules)
         self.command_manager = CommandManager()
-        self.waiting_handlers: list[WaitHandler] = []
-
-    def _on_trigger_event(self, wait_handler: WaitHandler):
-        @async_task
-        def _on_event(event: CommandMatcher.TriggerEvent):
-            nonlocal wait_handler
-            if event.wait_handler is not wait_handler:
-                return None
-            # if event.new_event_data:
-            # 神奇妙妙修改局部变量小魔法(弃用，这东西还是有点过于魔法了，还是正常点好了)
-            # try:
-            #     frame = wait_handler.generator.gi_frame
-            #     if frame is None:
-            #         logger.warning(f"在尝试修改事件处理器时事件数据时发生错误: 帧已不存在", stack_info=True)
-            #     else:
-            #         f_locals = frame.f_locals
-            #
-            #         if 'event_data' in f_locals:
-            #             f_locals['event_data'] = event.new_event_data
-            #
-            #             ctypes.pythonapi.PyFrame_LocalsToFast(ctypes.py_object(frame), ctypes.c_int(0))
-            # except Exception as e:
-            #     logger.error(f"在尝试修改事件处理器时事件数据时发生错误: {repr(e)}", exc_info=True)
-
-            # print(wait_handler, event.wait_handler, self.waiting_handlers)
-            try:
-                wait_action = wait_handler.generator.send(event.data)
-            except StopIteration:
-                return True
-            except Exception as e:
-                if ConfigManager.GlobalConfig().debug.save_dump:
-                    dump_path = save_exc_dump(
-                        f"执行等待处理器 {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} 发生错误")
-                else:
-                    dump_path = None
-                logger.error(
-                    f"执行等待处理器 {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} 发生错误: {repr(e)}"
-                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                    exc_info=True
-                )
-                return True
-            finally:
-                self.waiting_handlers.remove(wait_handler)
-                EventManager.unregister_listener(self.TriggerEvent, _on_event)
-
-            if not isinstance(wait_action, WaitAction):
-                wait_handler.generator.throw(TypeError("wait_action must be a WaitAction"))
-                return True
-
-            wait_handler = WaitHandler(
-                generator=wait_handler.generator,
-                raw_event_data=wait_handler.raw_event_data,
-                raw_handler=wait_handler.raw_handler,
-                wait_timeout=wait_action.timeout
-            )
-            wait_action.set_data(self, wait_handler)
-            self.waiting_handlers.append(wait_handler)
-            if wait_handler.wait_timeout is not None:
-                TimerManager.delay(
-                    wait_handler.wait_timeout,
-                    throw_timeout_error,
-                    matcher=self,
-                    handler=wait_handler
-                )
-            targeter_event = self.TriggerEvent(wait_handler)
-            EventManager.event_listener(self.TriggerEvent)(self._on_trigger_event(wait_handler))
-            t = time.perf_counter()
-            wait_action.wait_trigger(targeter_event)
-            if time.perf_counter() - t > 0.5:
-                logger.warning(f"在执行处理器"
-                               f" {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} "
-                               f"时，其返回的等待处理器触发器"
-                               f"{wait_action.wait_trigger.__module__}.{wait_action.wait_trigger.__name__}"
-                               f"初始化时间过长，"
-                               f"耗时: {round((time.perf_counter() - t) * 1000, 2)}ms，"
-                               f"等待处理器运行请仅进行初始化，不要在其中执行耗时操作，如果的确有需求请使用"
-                               f"@async_task装饰器，让其运行在线程池的其他线程中")
-            return True
-
-        return _on_event
+        if command_matcher_error_handler is None:
+            command_matcher_error_handler = _command_matcher_error_handler
+        self.command_matcher_error_handler = command_matcher_error_handler
 
     def register_command(self, command: BaseArg | str,
                          priority: int = 0, rules: list[EventHandlers.Rule] = None, *args, **kwargs):
@@ -329,15 +221,8 @@ class CommandMatcher(EventHandlers.Matcher):
                 if not res:
                     return False, None
         except Exception as e:
-            if ConfigManager.GlobalConfig().debug.save_dump:
-                dump_path = save_exc_dump(f"在事件 {event_data.event_data} 中匹配事件处理器时出错")
-            else:
-                dump_path = None
-            logger.error(
-                f"在事件 {event_data.event_data} 中匹配事件处理器时出错: {repr(e)}"
-                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                exc_info=True
-            )
+            exc_logger(e,
+                       f"在事件 {event_data.event_data} 中匹配事件处理器时出错")
             return False, None
         return True, rules_kwargs
 
@@ -351,26 +236,14 @@ class CommandMatcher(EventHandlers.Matcher):
         if self.command_manager.command_list:
             try:
                 kwargs, command_def, last_command_def = self.command_manager.run_command(
-                    rules_kwargs["command_message"])
-            except NotMatchCommandError as e:
-                logger.error(f"未匹配到命令: {repr(e)}", exc_info=True)
-                event_data.reply(f"未匹配到命令: {e}")
-                return None
-            except CommandMatchError as e:
-                logger.info(f"命令匹配错误: {repr(e)}", exc_info=True)
-                event_data.reply(f"命令匹配错误，请检查命令是否正确: {e}")
-                return None
-            except Exception as e:
-                if ConfigManager.GlobalConfig().debug.save_dump:
-                    dump_path = save_exc_dump(f"在事件 {event_data.event_data} 中进行命令处理发生未知错误")
-                else:
-                    dump_path = None
-                logger.error(
-                    f"在事件 {event_data.event_data} 中进行命令处理发生未知错误: {repr(e)}"
-                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                    exc_info=True
+                    rules_kwargs["command_message"]
                 )
-                event_data.reply(f"命令处理发生未知错误: {repr(e)}")
+            except Exception as e:
+                try:
+                    self.command_matcher_error_handler(event_data, e)
+                except Exception as e:
+                    logger.exception(f"在捕获命令时出现错误，同时执行错误处理程序时也出错: {repr(e)}")
+                    raise e
                 return None
             rules_kwargs.update({
                 "command_def": command_def,
@@ -423,68 +296,14 @@ class CommandMatcher(EventHandlers.Matcher):
                 handler_kwargs.update(rules_kwargs)
                 handler_kwargs = inject_dependencies(handler, handler_kwargs)
 
-                # 检查是否是生成器
-                if inspect.isgeneratorfunction(handler):
-                    generator = handler(event_data, *args, **handler_kwargs)
-                    try:
-                        wait_action = generator.send(None)
-                    except StopIteration as e:
-                        if e.value is True:
-                            return None
-                        else:
-                            wait_action = None
-
-                    if wait_action is not None:
-                        if not isinstance(wait_action, WaitAction):
-                            generator.throw(TypeError("wait_action must be a WaitAction"))
-                            return True
-
-                        wait_handler = WaitHandler(
-                            generator=generator,
-                            raw_event_data=event_data,
-                            raw_handler=handler,
-                            wait_timeout=wait_action.timeout
-                        )
-                        wait_action.set_data(self, wait_handler)
-                        self.waiting_handlers.append(wait_handler)
-                        if wait_handler.wait_timeout is not None:
-                            TimerManager.delay(
-                                wait_handler.wait_timeout,
-                                throw_timeout_error,
-                                matcher=self,
-                                handler=wait_handler
-                            )
-                        targeter_event = self.TriggerEvent(wait_handler)
-                        EventManager.event_listener(self.TriggerEvent)(self._on_trigger_event(wait_handler))
-                        t = time.perf_counter()
-                        wait_action.wait_trigger(targeter_event)
-                        if time.perf_counter() - t > 0.5:
-                            logger.warning(f"在执行处理器"
-                                           f" {wait_handler.raw_handler.__module__}.{wait_handler.raw_handler.__name__} "
-                                           f"时，其返回的等待处理器触发器"
-                                           f"{wait_action.wait_trigger.__module__}.{wait_action.wait_trigger.__name__}"
-                                           f"初始化时间过长，"
-                                           f"耗时: {round((time.perf_counter() - t) * 1000, 2)}ms，"
-                                           f"等待处理器运行请仅进行初始化，不要在其中执行耗时操作，如果的确有需求请使用"
-                                           f"@async_task装饰器，让其运行在线程池的其他线程中")
-                    result = False
-                else:
-                    result = handler(event_data, *args, **handler_kwargs)
+                result = handler(event_data, *args, **handler_kwargs)
 
                 if result is True:
                     logger.debug(f"处理器 {handler.__module__}.{handler.__name__} 阻断了事件 {event_data} 的传播")
                     return None  # 阻断同一 Matcher 内的传播
             except Exception as e:
-                if ConfigManager.GlobalConfig().debug.save_dump:
-                    dump_path = save_exc_dump(f"执行匹配事件或执行处理器 {handler.__module__}.{handler.__name__} "
-                                              f"时出错 {event_data}")
-                else:
-                    dump_path = None
-                logger.error(
-                    f"执行匹配事件或执行处理器 {handler.__module__}.{handler.__name__} 时出错 {event_data}: {repr(e)}"
-                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                    exc_info=True
-                )
+                exc_logger(e,
+                           f"执行匹配事件或执行处理器 {handler.__module__}.{handler.__name__} 时出错 {event_data}")
         return None
 
 
