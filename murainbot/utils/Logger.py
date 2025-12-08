@@ -14,7 +14,7 @@ from rich.traceback import Traceback
 
 from ..paths import paths
 
-logger_instance: logging.Logger = None
+logger_instance: logging.Logger | None = None
 FRAMEWORK_LOGGER_NAME = "murainbot"
 
 
@@ -23,9 +23,6 @@ class CustomRichHandler(logging.Handler):
     自定义日志记录器
     """
     # 关键字高亮
-    KEYWORDS: ClassVar[Optional[list[str]]] = [
-        "GET", "POST", "HEAD", "PUT", "DELETE", "OPTIONS", "TRACE", "PATCH",
-    ]
     HIGHLIGHTER_CLASS: ClassVar[Type[Highlighter]] = ReprHighlighter
 
     def __init__(
@@ -102,8 +99,6 @@ class CustomRichHandler(logging.Handler):
         use_markup = getattr(record, "markup", self.markup)
         message_text = Text.from_markup(message) if use_markup else Text(message)
         message_text = self.highlighter(message_text)
-        if self.KEYWORDS:
-            message_text.highlight_words(self.KEYWORDS, "logging.keyword")
 
         path = f"{record.name}"
         # 使用 rich 的内置日志样式
@@ -114,7 +109,7 @@ class CustomRichHandler(logging.Handler):
         single_line_table.add_column(width=6)
         single_line_table.add_column(ratio=1)
         single_line_table.add_column(style="log.path")
-        single_line_table.add_row(time_text, level_text, message_text, path_text)
+        single_line_table.add_row(time_text, level_text, message_text.split("\n")[0], path_text)
 
         capture_console = Console(width=self.console.width, record=True)
         with capture_console.capture() as capture:
@@ -125,7 +120,14 @@ class CustomRichHandler(logging.Handler):
         rendered_text = capture.get().strip()
         is_multiline = "\n" in rendered_text
 
-        if not is_multiline:
+        if not is_multiline and "\n" not in message_text:
+            single_line_table = Table.grid(expand=True, padding=(0, 1))
+            single_line_table.add_column(style="log.time")
+            single_line_table.add_column(width=6)
+            single_line_table.add_column(ratio=1)
+            single_line_table.add_column(style="log.path")
+            single_line_table.add_row(time_text, level_text, message_text, path_text)
+
             # 如果没有换行符，说明单行搞定
             final_layout = single_line_table
         else:
@@ -135,9 +137,22 @@ class CustomRichHandler(logging.Handler):
             meta_table.add_column(width=6)
             meta_table.add_column(ratio=1)
             meta_table.add_column(style="log.path")
-            meta_table.add_row(time_text, level_text, Text(r"↩"), path_text)
+            meta_table.add_row(
+                time_text,
+                level_text,
+                Text(r"↩") if is_multiline else message_text.split("\n")[0],
+                path_text
+            )
 
-            final_layout = Group(meta_table, message_text + "\n")
+            if not is_multiline:
+                message_text_ = ""
+
+                for line in message_text.split("\n")[1:]:
+                    message_text_ += line.markup + "\n"
+
+                message_text = Text.from_markup(message_text_)
+
+            final_layout = Group(meta_table, message_text)
 
         # --- 组合最终布局和 Traceback ---
         if traceback:
@@ -162,9 +177,8 @@ def init(logs_path: str = None, logger_level: int = logging.INFO):
 
     console_handler = CustomRichHandler(
         level=logger_level,
-        rich_tracebacks=True,
-        tracebacks_show_locals=True,
-        markup=True
+        rich_tracebacks=False,
+        markup=False
     )
     log_name = "latest.log"
     log_path = os.path.join(logs_path, log_name)
@@ -205,7 +219,7 @@ def set_logger_level(level: int):
             handler.setLevel(level)
 
 
-def get_logger(name: str | None = None):
+def get_logger(name: str | None = None) -> logging.Logger:
     """
     获取日志记录器
     """
@@ -215,10 +229,7 @@ def get_logger(name: str | None = None):
             module_name = frame.f_globals.get('__name__')
 
             if module_name and isinstance(module_name, str):
-                if module_name.startswith("plugins"):
-                    logger_name = FRAMEWORK_LOGGER_NAME + "." + module_name
-                else:
-                    logger_name = module_name
+                logger_name = module_name
             else:
                 logger_name = FRAMEWORK_LOGGER_NAME
         except Exception:
