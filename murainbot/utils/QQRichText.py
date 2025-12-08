@@ -335,7 +335,7 @@ def convert_to_fileurl(input_str: str | os.PathLike) -> str:
 
 
 segments = []
-segments_map = {}
+segments_map: dict[str, type[Segment]] = {}
 
 
 class SegmentMeta(type):
@@ -611,7 +611,7 @@ class Image(Segment):
             Image对象
         """
         # __init__会处理convert_to_fileurl，直接传递参数即可
-        return cls(file=seg_dict.get("data", {}).get("file", ""))
+        return cls(file=seg_dict.get("data", {}).get("url", seg_dict.get("data", {}).get("file", "")))
 
     @property
     def file(self) -> str:
@@ -644,7 +644,7 @@ class Record(Segment):
         Returns:
             Record对象
         """
-        return cls(file=seg_dict.get("data", {}).get("file", ""))
+        return cls(file=seg_dict.get("data", {}).get("url", seg_dict.get("data", {}).get("file", "")))
 
     @property
     def file(self) -> str:
@@ -677,7 +677,7 @@ class Video(Segment):
         Returns:
             Video对象
         """
-        return cls(file=seg_dict.get("data", {}).get("file", ""))
+        return cls(file=seg_dict.get("data", {}).get("url", seg_dict.get("data", {}).get("file", "")))
 
     @property
     def file(self) -> str:
@@ -1394,28 +1394,31 @@ def _create_segment_from_dict(segment_dict: dict) -> Segment:
     if segment_type in segments_map:
         try:
             try:
-                return segments_map[segment_type].creat_from_seg_dict(segment_dict)
+                segment = segments_map[segment_type].creat_from_seg_dict(segment_dict)
             except NotImplementedError:
-                logger.warning(f"{segments_map[segment_type]}的creat_from_seg_dict方法未实现，回退到__init__自动匹配初始化")
+                logger.warning(
+                    f"{segments_map[segment_type]}的creat_from_seg_dict方法未实现，回退到__init__自动匹配初始化")
 
-            params = inspect.signature(segments_map[segment_type]).parameters
-            kwargs = {}
-            data = segment_dict.get("data", {})
-            for param in params:
-                if param in data:
-                    kwargs[param] = data[param]
-                elif param == "id_":
-                    kwargs[param] = data.get("id")
-                elif param == "type_":
-                    kwargs[param] = data.get("type")
-                elif params[param].default != params[param].empty:
-                    kwargs[param] = params[param].default
+                params = inspect.signature(segments_map[segment_type]).parameters
+                kwargs = {}
+                data = segment_dict.get("data", {})
+                for param in params:
+                    if param in data:
+                        kwargs[param] = data[param]
+                    elif param == "id_":
+                        kwargs[param] = data.get("id")
+                    elif param == "type_":
+                        kwargs[param] = data.get("type")
+                    elif params[param].default != params[param].empty:
+                        kwargs[param] = params[param].default
 
-            segment = segments_map[segment_type](**kwargs)
+                segment = segments_map[segment_type](**kwargs)
 
+            # 为了兼容性，添加一下不包含的键
             for k, v in data.items():
                 if k not in segment.data:
                     segment.set_data(k, v)
+
             return segment
         except Exception as e:
             if ConfigManager.GlobalConfig().debug.save_dump:
