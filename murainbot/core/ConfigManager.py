@@ -218,7 +218,7 @@ class GlobalConfig(ConfigManager):
         )
         self.debug = self.Debug(
             enable=self.get("debug", {}).get("enable", False),
-            save_dump=self.get("debug", {}).get("save_dump", True)
+            save_dump=self.get("debug", {}).get("save_dump", False)
         )
         self.auto_restart_onebot = self.AutoRestartOnebot(
             enable=self.get("auto_restart_onebot", {}).get("enable", True)

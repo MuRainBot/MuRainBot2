@@ -12,10 +12,11 @@ OnebotAPI
 import json
 import traceback
 import urllib.parse
+
 import requests
 
 from . import EventManager, ConfigManager
-from ..common import save_exc_dump
+from ..common import exc_logger
 from ..utils import Logger
 
 logger = Logger.get_logger()
@@ -123,15 +124,7 @@ class OnebotAPI:
             else:
                 return response.json()['data']
         except Exception as e:
-            if ConfigManager.GlobalConfig().debug.save_dump and creat_dump:
-                dump_path = save_exc_dump(f"调用 API: {node} data: {data} 异常")
-            else:
-                dump_path = None
-            logger.error(
-                f"调用 API: {node} data: {data} 异常: {repr(e)}"
-                f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                exc_info=True
-            )
+            exc_logger(e, f"调用 API: {node} data: {data} 异常")
             raise e
 
     def send_private_msg(self, user_id: int, message: str | list[dict]):

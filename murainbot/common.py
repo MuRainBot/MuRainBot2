@@ -16,6 +16,7 @@ from typing import Callable
 
 import requests
 
+from .core import ConfigManager
 from .paths import paths
 from .utils import Logger
 
@@ -331,6 +332,27 @@ def save_exc_dump(description: str = None, path: str = None):
         return None
 
     return kwargs["path"]
+
+
+def exc_logger(e: Exception, message: str = None):
+    """
+    记录异常日志并保存dump
+    Args:
+        e: 异常
+        message: 描述
+
+    Returns:
+        None
+    """
+    if ConfigManager.GlobalConfig().debug.save_dump:
+        dump_path = save_exc_dump(message)
+    else:
+        dump_path = None
+    logger.error(
+        f"{message}: {repr(e)}"
+        f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
+        exc_info=True
+    )
 
 
 def bytes_io_to_file(

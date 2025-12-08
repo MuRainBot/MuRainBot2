@@ -10,7 +10,7 @@ import sys
 from types import ModuleType
 from typing import TypedDict
 
-from murainbot.common import save_exc_dump
+from murainbot.common import exc_logger
 from murainbot.paths import paths
 from murainbot.core import ConfigManager
 from murainbot.utils.Logger import get_logger
@@ -158,13 +158,7 @@ def load_plugins():
             logger.warning(f"插件 {name}({full_path}) 已被禁用，将不会被加载")
             continue
         except Exception as e:
-            if ConfigManager.GlobalConfig().debug.save_dump:
-                dump_path = save_exc_dump(f"尝试加载插件 {full_path} 时失败")
-            else:
-                dump_path = None
-            logger.error(f"尝试加载插件 {full_path} 时失败！ 原因:{repr(e)}"
-                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                         exc_info=True)
+            exc_logger(e, f"尝试加载插件 {full_path} 时失败")
             continue
 
         logger.debug(f"插件 {name}({full_path}) 加载成功！")
@@ -188,17 +182,12 @@ def requirement_plugin(plugin_name: str):
                     plugin["info"] = plugin_info
                     plugin["plugin"] = module
                     plugins.append(plugin)
-                except NotEnabledPluginException:
-                    logger.error(f"被依赖的插件 {plugin_name} 已被禁用，无法加载依赖")
-                    raise Exception(f"被依赖的插件 {plugin_name} 已被禁用，无法加载依赖")
+                except NotEnabledPluginException as e:
+                    msg = f"被依赖的插件 {plugin_name} 已被禁用，无法加载依赖"
+                    logger.error(msg)
+                    raise Exception(msg) from e
                 except Exception as e:
-                    if ConfigManager.GlobalConfig().debug.save_dump:
-                        dump_path = save_exc_dump(f"尝试加载被依赖的插件 {plugin_name} 时失败！")
-                    else:
-                        dump_path = None
-                    logger.error(f"尝试加载被依赖的插件 {plugin_name} 时失败！ 原因:{repr(e)}"
-                                 f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                                 exc_info=True)
+                    exc_logger(e, f"尝试加载被依赖的插件 {plugin_name} 时失败")
                     raise e
                 logger.debug(f"由于插件依赖，插件 {plugin_name} 加载成功！")
             else:

@@ -4,7 +4,7 @@
 import copy
 from typing import Literal, Callable, Any, Type
 
-from murainbot.common import save_exc_dump, inject_dependencies
+from murainbot.common import inject_dependencies, exc_logger
 from murainbot.core import EventManager, ConfigManager, PluginManager
 from murainbot.utils import EventClassifier, Logger, QQRichText, StateManager
 
@@ -124,13 +124,7 @@ class KeyValueRule(Rule):
                     return self.func(event_data.get(self.key), self.value)
             return None
         except Exception as e:
-            if ConfigManager.GlobalConfig().debug.save_dump:
-                dump_path = save_exc_dump(f"执行匹配事件器时出错 {event_data}")
-            else:
-                dump_path = None
-            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}"
-                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                         exc_info=True)
+            exc_logger(e, f"执行匹配事件器时出错 {event_data}")
             return False
 
 
@@ -151,15 +145,7 @@ class FuncRule(Rule):
         try:
             return self.func(event_data)
         except Exception as e:
-            if ConfigManager.GlobalConfig().debug.save_dump:
-                dump_path = save_exc_dump(f"执行匹配事件器时出错 {event_data}")
-            else:
-                dump_path = None
-
-            logger.error(f"执行匹配事件器时出错 {event_data}: {repr(e)}"
-                         f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                         exc_info=True
-                         )
+            exc_logger(e, f"执行匹配事件器时出错 {event_data}")
             return False
 
 
@@ -418,16 +404,7 @@ class Matcher:
                     logger.debug(f"处理器 {handler.__module__}.{handler.__name__} 阻断了事件 {event_data} 的传播")
                     return  # 阻断同一 Matcher 内的传播
             except Exception as e:
-                if ConfigManager.GlobalConfig().debug.save_dump:
-                    dump_path = save_exc_dump(f"执行匹配事件或执行处理器 {handler.__module__}.{handler.__name__} "
-                                              f"时出错 {event_data}")
-                else:
-                    dump_path = None
-                logger.error(
-                    f"执行匹配事件或执行处理器 {handler.__module__}.{handler.__name__} 时出错 {event_data}: {repr(e)}"
-                    f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                    exc_info=True
-                )
+                exc_logger(e, f"执行匹配事件或执行处理器 {handler.__module__}.{handler.__name__} 时出错 {event_data}")
 
 
 events_matchers: dict[str, dict[Type[EventClassifier.Event], list[tuple[int, Matcher]]]] = {}
