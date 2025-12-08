@@ -2,16 +2,18 @@
 事件管理器，用于管理事件与事件监听器
 """
 import inspect
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from murainbot.common import save_exc_dump
-from murainbot.core import ConfigManager
+from murainbot.common import exc_logger
 from murainbot.core.ThreadPool import async_task
 from murainbot.utils import Logger
 
 logger = Logger.get_logger()
+
+_event_lock = threading.Lock()
 
 
 class _Event:
@@ -34,30 +36,28 @@ class Hook(_Event):
         """
         按优先级顺序同步触发所有监听器
         """
-        if self.__class__ in event_listeners:
-            for listener in sorted(event_listeners[self.__class__], key=lambda i: i.priority, reverse=True):
-                try:
-                    res = listener.func(self, **listener.kwargs)
-                except Exception as e:
-                    if ConfigManager.GlobalConfig().debug.save_dump:
-                        dump_path = save_exc_dump(f"监听器中发生错误")
-                    else:
-                        dump_path = None
-                    logger.error(f"监听器中发生错误: {repr(e)}"
-                                 f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                                 exc_info=True)
-                    continue
-                if res is True:
-                    return True
-            return False
-        return None
+        with _event_lock:
+            if self.__class__ not in event_listeners:
+                return None
+
+            listeners_list = sorted(event_listeners[self.__class__], key=lambda i: i.priority, reverse=True)
+
+        for listener in listeners_list:
+            try:
+                res = listener.func(self, **listener.kwargs)
+            except Exception as e:
+                exc_logger(e, "监听器中发生错误")
+                continue
+            if res is True:
+                return True
+        return False
 
 
 T = TypeVar('T', bound='_Event')
 
 
-# 定义事件监听器的数据类
-@dataclass(order=True)
+# 定义事件监听器的数据类，使用frozen是为了保证数据是只读的来避免可能的线程安全问题
+@dataclass(order=True, frozen=True)
 class EventListener:
     """
     事件监听器数据类
@@ -91,7 +91,8 @@ def event_listener(event_class: type[T], priority: int = 0, **kwargs):
     def wrapper(func: Callable[[T, ...], Any]):
         # 注册事件监听器
         listener = EventListener(priority=priority, func=func, kwargs=kwargs)
-        event_listeners.setdefault(event_class, []).append(listener)
+        with _event_lock:
+            event_listeners.setdefault(event_class, []).append(listener)
         return func
 
     return wrapper
@@ -109,24 +110,25 @@ def unregister_listener(event_class: type[T], func: Callable[[T, ...], Any]):
     if not issubclass(event_class, _Event):
         raise TypeError("event_class 类必须是 _Event 的子类")
 
-    listeners_list = event_listeners.get(event_class)
+    with _event_lock:
+        listeners_list = event_listeners.get(event_class)
 
-    if not listeners_list:
-        raise ValueError(f"事件类型 {event_class.__name__} 没有已注册的监听器。")
+        if not listeners_list:
+            raise ValueError(f"事件类型 {event_class.__name__} 没有已注册的监听器。")
 
-    # 查找所有与给定函数匹配的监听器对象
-    listeners_to_remove = [listener for listener in listeners_list if listener.func == func]
+        # 查找所有与给定函数匹配的监听器对象
+        listeners_to_remove = [listener for listener in listeners_list if listener.func == func]
 
-    if not listeners_to_remove:
-        # 如果没有找到匹配的函数
-        raise ValueError(f"未找到函数 {func.__name__} 对应的监听器，无法为事件 {event_class.__name__} 注销。")
+        if not listeners_to_remove:
+            # 如果没有找到匹配的函数
+            raise ValueError(f"未找到函数 {func.__name__} 对应的监听器，无法为事件 {event_class.__name__} 注销。")
 
-    # 移除所有找到的监听器
-    for listener_obj in listeners_to_remove:
-        listeners_list.remove(listener_obj)
+        # 移除所有找到的监听器
+        for listener_obj in listeners_to_remove:
+            listeners_list.remove(listener_obj)
 
-    if not listeners_list:
-        del event_listeners[event_class]
+        if not listeners_list:
+            del event_listeners[event_class]
 
 
 class Event(_Event):
@@ -137,28 +139,29 @@ class Event(_Event):
     def _call_hook(self, listener: EventListener):
         return Hook(self, listener).call()
 
-    def call(self):
+    def call(self) -> list[tuple[EventListener, Any]] | None:
         """
         按优先级顺序同步触发所有监听器
         """
-        if self.__class__ in event_listeners:
-            res_list = []
-            for listener in sorted(event_listeners[self.__class__], key=lambda i: i.priority, reverse=True):
-                if self._call_hook(listener):
-                    logger.debug(f"由 Hook 跳过监听器: {listener.func.__name__}")
-                    continue
-                try:
-                    res = listener.func(self, **listener.kwargs)
-                except Exception as e:
-                    if ConfigManager.GlobalConfig().debug.save_dump:
-                        dump_path = save_exc_dump(f"监听器中发生错误")
-                    else:
-                        dump_path = None
-                    logger.error(f"监听器中发生错误: {repr(e)}"
-                                 f"{f"\n已保存异常到 {dump_path}" if dump_path else ""}",
-                                 exc_info=True)
-                    continue
-                res_list.append(res)
+        with _event_lock:
+            if self.__class__ not in event_listeners:
+                return None
+
+            listeners_list = sorted(event_listeners[self.__class__], key=lambda i: i.priority, reverse=True)
+
+        results = []
+        for listener in listeners_list:
+            if self._call_hook(listener):
+                logger.debug(f"由 Hook 跳过监听器: {listener.func.__name__}")
+                continue
+            try:
+                res = listener.func(self, **listener.kwargs)
+            except Exception as e:
+                exc_logger(e, "监听器中发生错误")
+                continue
+            results.append((listener, res))
+
+        return results
 
     @async_task
     def call_async(self):
