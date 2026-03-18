@@ -22,7 +22,7 @@ _URL_RE = re.compile(
     r'^'  # 行首
     r'([A-Za-z][A-Za-z0-9+.-]*)'  # scheme
     r':'  # 冒号
-    r'(?:(//([^/?#\s]+)([^\s#]*))'  # 方案 A: '//' authority (必有 authority) + 可选 path
+    r'(?:(//(?=[^#\s])([^/?#\s]*)([^\s#]*))'  # 方案 A: '//' 可选 authority + 可选 path，但 path 和 authority 至少有一个
     r'|(?!//)([^\s#]*))'  # 方案 B: 没有 '//'，允许任意 path（但不能以 '//' 开头）
     r'(?:#\S*)?'  # 可选 fragment
     r'$'  # 行尾
@@ -1397,7 +1397,8 @@ def _create_segment_from_dict(segment_dict: dict) -> Segment:
                 segment = segments_map[segment_type].creat_from_seg_dict(segment_dict)
             except NotImplementedError:
                 logger.warning(
-                    f"{segments_map[segment_type]}的creat_from_seg_dict方法未实现，回退到__init__自动匹配初始化")
+                    f"{segments_map[segment_type]}的creat_from_seg_dict方法未实现，回退到__init__自动匹配初始化"
+                )
 
                 params = inspect.signature(segments_map[segment_type]).parameters
                 kwargs = {}
@@ -1613,6 +1614,7 @@ if __name__ == "__main__":
 
     print("--- 正确示例 ---")
     print(cq_2_array("你好[CQ:face,id=123]世界[CQ:image,file=abc.jpg,url=https://a.com/b?c=1&d=2]"))
+    print(cq_2_array("你好[CQ:face,id=123]世界[CQ:image,file=abc.jpg,url=file:///C:/test.txt]"))
     print(cq_2_array("[CQ:shake]"))
     print(cq_2_array("只有文本"))
     print(cq_2_array("[CQ:at,qq=123][CQ:at,qq=456]"))

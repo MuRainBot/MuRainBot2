@@ -253,14 +253,18 @@ class CommandRule(Rule):
             # 检查消息是否以任何预设命令前缀开始
             if any(string_message.startswith(_) for _ in commands):
                 # 移除命令前缀
-                for start in self.command_start:
+                for start in sorted(self.command_start, key=len, reverse=True):
                     if string_message.startswith(start):
                         string_message = string_message[len(start):]
                         break
-                # 替换别名为主命令
-                for alias in self.aliases:
-                    if string_message.startswith(alias):
-                        string_message = self.command + string_message[len(alias):]
+
+                # 将主命令和所有别名合并，按长度从长到短排序
+                all_possible_cmds = sorted([self.command] + list(self.aliases), key=len, reverse=True)
+                for cmd in all_possible_cmds:
+                    if string_message.startswith(cmd):
+                        # 只有当匹配到的不是主命令本身时，才需要执行替换
+                        if cmd != self.command:
+                            string_message = self.command + string_message[len(cmd):]
                         break
             else:
                 return False
